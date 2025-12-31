@@ -410,6 +410,29 @@ def main():
         help="Total amount is automatically calculated (Rate × Quantity)"
     )
     
+    # Row 5: Payment status
+    st.markdown("### Payment")
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        payment_status = st.selectbox(
+            "Payment Status",
+            options=["Paid", "Half paid", "Not paid"],
+            index=0,
+            help="Select payment status"
+        )
+    with col_p2:
+        amount_paid = 0.0
+        # Show numeric input only when 'Half paid' is selected
+        if payment_status == "Half paid":
+            amount_paid = st.number_input(
+                "Amount Paid (₹)",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+                format="%.2f",
+                help="Enter the amount paid (numbers only)"
+            )
+    
     # Submit button
     st.markdown("---")
     submitted = st.button("💾 Save Sales Entry", use_container_width=True, type="primary")
@@ -434,7 +457,9 @@ def main():
                 "Packaging": packaging,
                 "Rate": rate,
                 "Quantity": quantity,
-                "Total Amount": total_amount
+                "Total Amount": total_amount,
+                "Payment Status": payment_status,
+                "Amount Paid": float(amount_paid)
             }
             
             # Save to Excel
