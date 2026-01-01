@@ -21,14 +21,14 @@ st.set_page_config(
 BRAND_NAME = "GOLD Tea Powder"
 TEA_TYPES = ["Mix", "Barik"]
 # All available villages for selection
-VILLAGES = ["vairgwadi", "Bardwadi", "Harali KH", "Harali BK", "Other Village 1", "Other Village 2"]
+VILLAGES = ["vairgwadi", "Bardwadi", "Harali KH", "Harali BK"]
 
 # Packaging options with their rates
 PACKAGING_RATES = {
-    "100gm": 60,
-    "250gm": 140,
-    "500gm": 270,
-    "1kg": 520
+    "100gm": 35,
+    "250gm": 85,
+    "500gm": 170,
+    "1kg": 350
 }
 
 # Excel file name
@@ -36,6 +36,9 @@ EXCEL_FILE = "gold_tea_sales.xlsx"
 
 # Customer database file (JSON)
 CUSTOMER_DB_FILE = "customer_database.json"
+
+# Pricing database file (JSON)
+PRICING_DB_FILE = "pricing_database.json"
 
 # Days of the week
 DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -52,63 +55,147 @@ DAY_TO_VILLAGE = {
 # You can add more customers for each village
 VILLAGE_CUSTOMERS = {
     "vairgwadi": [
-        "Rajesh Kumar",
+        " RatanaBai Gaddiwadar",
+        " Sadhana Patil",
+        "Hausabai Murkute",
+        " Murari Patil",
+        " Shivaji Sawant",
+        "Prakash Patil",
         "Suresh Patil",
-        "Mahesh Desai",
-        "Prakash Sharma",
-        "Dinesh Joshi",
-        "Ramesh Gupta",
-        "Vijay Kulkarni",
-        "Anil Bhosale",
-        "Santosh Pawar",
-        "Ganesh Rao"
-    ],
-    "Bardwadi": [
-        "Sanjay Jadhav",
-        "Ashok Shinde",
-        "Deepak Mane",
-        "Nitin Salve",
-        "Sachin More",
-        "Ravi Bhagat",
-        "Kiran Kale",
-        "Manoj Gaikwad",
-        "Vishal Sawant",
-        "Ajay Thorat"
-    ],
-    "Harali KH": [
-        "Balaji Naik",
-        "Sambhaji Rathod",
-        "Chandrakant Mali",
-        "Datta Kamble",
-        "Eknath Pawar",
-        "Govind Shinde",
-        "Hanmant Jadhav",
-        "Ishwar Patil",
-        "Jagdish Yadav",
-        "Keshav Deshmukh"
-    ],
-    "Harali BK": [
-        "Laxman Gaikwad",
-        "Maruti Bhosale",
-        "Nagnath Kadam",
-        "Pandurang Mane",
-        "Ramdas Salve",
-        "Shankar Kulkarni",
-        "Tanaji More",
-        "Uttam Shinde",
-        "Vasant Jadhav",
-        "Yashwant Pawar"
-    ],
-    "Other Village 1": [
-        "Customer A1",
-        "Customer A2",
-        "Customer A3"
-    ],
-    "Other Village 2": [
-        "Customer B1",
-        "Customer B2",
-        "Customer B3"
-    ]
+        "Anjali Patil",
+        "Chandrkant Sawant",
+        "Tanaji Sutar",
+        "Santosh Gourle",
+        "Sachin Kapase",
+        "Anil Dhotare",
+        "Vasant Patil"
+
+        ],
+        "Bardwadi": [
+            "Basappa Gholrake",
+            "Geeta Gholrake",
+            "Sanjay Gholrake",
+            "Pushpa Gholrake",
+            "Shanakar Pujari",
+            "Mahadev Naik",
+            "Hirabai Gholrake",
+            "Surekha Gholrake",
+            "Shanata Naik",
+            "Balava Gholrake",
+            "Anada Gholrake",
+            "Kempanna Gholrake",
+            "Maruti Gholrake",
+            "Sambhaji Gholrake",
+            "Chandrkant Naik",
+            "Renuka Arun Gholrake",
+            "Gaurabai Gholrake",
+            "Vaishali Gholrake",
+            "Akkatai naik",
+            "Lata Naik",
+            "Savatri Bhoi",
+            "Ratna Rangnavar",
+            "Mahadev Bhoi",
+            "Prashram Bhoi",
+            "Barama Bhoi",
+            "Satyappa Bhoi",
+            "Annappa Bhoi",
+            "Pushpa M Bhoi",
+            "Driver Bhoi",
+            "kori",
+            "Kallappa Kaujalagi",
+            "Suresh Kajualagi",
+            "Champabai Karguppi",
+            "Vaishali Karguppi",
+            "Suvrna Karguppi",
+            "Parubai Margudari",
+            "Kamal Margudari",
+            "Sanjay Margudari",
+            "Raju Margudari",
+            "Kalappa Margudari",
+            "Pradip Khandekar",
+            "Basawan Khandekar",
+            "Mallappa Kamble",
+            "Irrappa Kamble",
+            "Mahadev Kamble",
+            "Ashok Kamble",
+            "Shanta Konare",
+            "Bhairu Ragade",
+            "Chandrva Dhangar",
+            "Kamal Ragade",
+            "Mahadev Ragade",
+            "Rama Naik",
+            "Laxman Naik",
+            "Arun Sutar",
+            "Ankush Sutar"
+
+        ],
+        "Harali KH": [
+            "Sagar Kumbhar",
+            "Shankar Mali",
+            "Shivaji Mali",
+            "Ranjit Chavan",
+            "Surekha Bagadi",
+            "Daynashwar Bagadi ",
+            "Pandit Gurav",
+            "Gajana Patil",
+            "Janadharn Gurav",
+            " Laxman Patil",
+            "Filips Bardaskar",
+           " Chandrkant Kumbhar",
+           "Tanji Aapu Kumbhar",
+           "Sagar Banekar",
+           "Datayatra Bandu Kumbhar",
+           "Aavubai Kumbhar",
+           "Shivaji Kumbhar",
+           "Chaya Kumbhar",
+           "Gaurabai Kumbhar",
+           "Shivaji Kanade",
+           "Siddhava Kanade",
+           "Mayava Kanade",
+           "Anjana Bagadi",
+           "Bagwant Kumbhar",
+           "Jaywant Kumbhar",
+           "Santosh Bagadi",
+           "Arun Chothe",
+           "Kavita Chothe",
+           "Maruti Naik",
+           "Prema Bagadi"
+        ],
+        "Harali BK": [
+            "Vinayak Khanapure",
+            "Ravi Morti",
+            "Vijay Kamble",
+            "Dipak Kamble",
+            "Shanakar Kamble",
+            "Sanjay Kamble",
+            "Suresh Kori",
+            "Pundalik Kamble",
+            "Parshram Kamble",
+            "Suraj Kamble",
+            "Bharati Khavare",
+            "Narayan Bhalekar",
+            "Raju Chavan",
+            "Kavita Kokitkar",
+            "Hari Patake",
+            "Vandana Lohar",
+            "Sandip Patil",
+            "Sunil Khavare",
+            "Vimal Khavare",
+            "Aalka Khavare",
+            "Sandip Khavare",
+            "Shashikant Murukate",
+            "Netaji Murukate",
+            "Sanjay Hodage",
+            "Geeta Khavare",
+            "Narayan Patil",
+            "Ranaga Khavare",
+            "Rupali Koikitkar",
+            "Jayshri Parit",
+            "Dhanaji Davari",
+            "Shantaram Sutar",
+            "Ravindra Khavare"
+        ]
+    
 }
 
 def get_day_from_date(date):
@@ -142,61 +229,179 @@ def load_customer_database():
         return initialize_default_customers()
 
 
+def load_pricing_database():
+    """
+    Load pricing database from JSON file
+    Returns: Dictionary with packaging names as keys and prices as values
+    """
+    if os.path.exists(PRICING_DB_FILE):
+        try:
+            with open(PRICING_DB_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return PACKAGING_RATES.copy()
+    else:
+        return PACKAGING_RATES.copy()
+
+
+def save_pricing_database(pricing_db):
+    """
+    Save pricing database to JSON file
+    """
+    try:
+        with open(PRICING_DB_FILE, 'w', encoding='utf-8') as f:
+            json.dump(pricing_db, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        st.warning(f"Could not save pricing database: {str(e)}")
+
+
 def initialize_default_customers():
     """
     Initialize default customer database
     """
     return {
-        "vairgwadi": [
-            "Rajesh Kumar",
-            "Suresh Patil",
-            "Mahesh Desai",
-            "Prakash Sharma",
-            "Dinesh Joshi",
-            "Ramesh Gupta",
-            "Vijay Kulkarni",
-            "Anil Bhosale",
-            "Santosh Pawar",
-            "Ganesh Rao"
+       "vairgwadi": [
+        " RatanaBai Gaddiwadar",
+        " Sadhana Patil",
+        "Hausabai Murkute",
+        " Murari Patil",
+        " Shivaji Sawant",
+        "Prakash Patil",
+        "Suresh Patil",
+        "Anjali Patil",
+        "Chandrkant Sawant",
+        "Tanaji Sutar",
+        "Santosh Gourle",
+        "Sachin Kapase",
+        "Anil Dhotare",
+        "Vasant Patil"
+
         ],
         "Bardwadi": [
-            "Sanjay Jadhav",
-            "Ashok Shinde",
-            "Deepak Mane",
-            "Nitin Salve",
-            "Sachin More",
-            "Ravi Bhagat",
-            "Kiran Kale",
-            "Manoj Gaikwad",
-            "Vishal Sawant",
-            "Ajay Thorat"
+            "Basappa Gholrake",
+            "Geeta Gholrake",
+            "Sanjay Gholrake",
+            "Pushpa Gholrake",
+            "Shanakar Pujari",
+            "Mahadev Naik",
+            "Hirabai Gholrake",
+            "Surekha Gholrake",
+            "Shanata Naik",
+            "Balava Gholrake",
+            "Anada Gholrake",
+            "Kempanna Gholrake",
+            "Maruti Gholrake",
+            "Sambhaji Gholrake",
+            "Chandrkant Naik",
+            "Renuka Arun Gholrake",
+            "Gaurabai Gholrake",
+            "Vaishali Gholrake",
+            "Akkatai naik",
+            "Lata Naik",
+            "Savatri Bhoi",
+            "Ratna Rangnavar",
+            "Mahadev Bhoi",
+            "Prashram Bhoi",
+            "Barama Bhoi",
+            "Satyappa Bhoi",
+            "Annappa Bhoi",
+            "Pushpa M Bhoi",
+            "Driver Bhoi",
+            "kori",
+            "Kallappa Kaujalagi",
+            "Suresh Kajualagi",
+            "Champabai Karguppi",
+            "Vaishali Karguppi",
+            "Suvrna Karguppi",
+            "Parubai Margudari",
+            "Kamal Margudari",
+            "Sanjay Margudari",
+            "Raju Margudari",
+            "Kalappa Margudari",
+            "Pradip Khandekar",
+            "Basawan Khandekar",
+            "Mallappa Kamble",
+            "Irrappa Kamble",
+            "Mahadev Kamble",
+            "Ashok Kamble",
+            "Shanta Konare",
+            "Bhairu Ragade",
+            "Chandrva Dhangar",
+            "Kamal Ragade",
+            "Mahadev Ragade",
+            "Rama Naik",
+            "Laxman Naik",
+            "Arun Sutar",
+            "Ankush Sutar"
+
         ],
         "Harali KH": [
-            "Balaji Naik",
-            "Sambhaji Rathod",
-            "Chandrakant Mali",
-            "Datta Kamble",
-            "Eknath Pawar",
-            "Govind Shinde",
-            "Hanmant Jadhav",
-            "Ishwar Patil",
-            "Jagdish Yadav",
-            "Keshav Deshmukh"
+            "Sagar Kumbhar",
+            "Shankar Mali",
+            "Shivaji Mali",
+            "Ranjit Chavan",
+            "Surekha Bagadi",
+            "Daynashwar Bagadi ",
+            "Pandit Gurav",
+            "Gajana Patil",
+            "Janadharn Gurav",
+            " Laxman Patil",
+            "Filips Bardaskar",
+           " Chandrkant Kumbhar",
+           "Tanji Aapu Kumbhar",
+           "Sagar Banekar",
+           "Datayatra Bandu Kumbhar",
+           "Aavubai Kumbhar",
+           "Shivaji Kumbhar",
+           "Chaya Kumbhar",
+           "Gaurabai Kumbhar",
+           "Shivaji Kanade",
+           "Siddhava Kanade",
+           "Mayava Kanade",
+           "Anjana Bagadi",
+           "Bagwant Kumbhar",
+           "Jaywant Kumbhar",
+           "Santosh Bagadi",
+           "Arun Chothe",
+           "Kavita Chothe",
+           "Maruti Naik",
+           "Prema Bagadi"
         ],
         "Harali BK": [
-            "Laxman Gaikwad",
-            "Maruti Bhosale",
-            "Nagnath Kadam",
-            "Pandurang Mane",
-            "Ramdas Salve",
-            "Shankar Kulkarni",
-            "Tanaji More",
-            "Uttam Shinde",
-            "Vasant Jadhav",
-            "Yashwant Pawar"
-        ],
-        "Other Village 1": [],
-        "Other Village 2": []
+            "Vinayak Khanapure",
+            "Ravi Morti",
+            "Vijay Kamble",
+            "Dipak Kamble",
+            "Shanakar Kamble",
+            "Sanjay Kamble",
+            "Suresh Kori",
+            "Pundalik Kamble",
+            "Parshram Kamble",
+            "Suraj Kamble",
+            "Bharati Khavare",
+            "Narayan Bhalekar",
+            "Raju Chavan",
+            "Kavita Kokitkar",
+            "Hari Patake",
+            "Vandana Lohar",
+            "Sandip Patil",
+            "Sunil Khavare",
+            "Vimal Khavare",
+            "Aalka Khavare",
+            "Sandip Khavare",
+            "Shashikant Murukate",
+            "Netaji Murukate",
+            "Sanjay Hodage",
+            "Geeta Khavare",
+            "Narayan Patil",
+            "Ranaga Khavare",
+            "Rupali Koikitkar",
+            "Jayshri Parit",
+            "Dhanaji Davari",
+            "Shantaram Sutar",
+            "Ravindra Khavare"
+        ]
+       
     }
 
 
@@ -373,17 +578,19 @@ def main():
     
     with col6:
         # Packaging selection
+        # Load current pricing from database
+        current_pricing = load_pricing_database()
         packaging = st.selectbox(
             "Packaging",
-            options=list(PACKAGING_RATES.keys()),
+            options=list(current_pricing.keys()),
             help="Select packaging size"
         )
     
     # Row 4: Rate and Quantity
     col7, col8 = st.columns(2)
     with col7:
-        # Rate - auto-filled based on packaging selection
-        rate = PACKAGING_RATES[packaging]
+        # Rate - auto-filled based on packaging selection from database
+        rate = current_pricing[packaging]
         st.number_input(
             "Rate (₹)",
             value=rate,
@@ -501,6 +708,168 @@ def main():
     else:
         st.info("No sales entries yet. Start by adding your first sale!")
     
+    # Customer Name Correction Section
+    st.markdown("---")
+    st.markdown("### ✏️ Correct Customer Name Spelling")
+    
+    # Create a button to show/hide the correction form
+    if st.button("🔧 Fix Customer Name Spelling", use_container_width=True):
+        st.session_state['show_correction_form'] = not st.session_state.get('show_correction_form', False)
+    
+    # Show correction form if button was clicked
+    if st.session_state.get('show_correction_form', False):
+        st.markdown("#### Select and Edit Customer Name")
+        
+        col_fix1, col_fix2 = st.columns(2)
+        
+        with col_fix1:
+            # Village selection dropdown
+            fix_village = st.selectbox(
+                "Select Village",
+                options=VILLAGES,
+                key="fix_village_select",
+                help="Choose the village where the customer belongs"
+            )
+        
+        with col_fix2:
+            # Load customers for the selected village
+            customer_db_fix = load_customer_database()
+            customers_in_village = customer_db_fix.get(fix_village, [])
+            
+            # Customer selection dropdown
+            if customers_in_village:
+                selected_customer = st.selectbox(
+                    "Select Customer to Edit",
+                    options=customers_in_village,
+                    key="fix_customer_select",
+                    help="Choose the customer name you want to correct"
+                )
+            else:
+                st.warning(f"No customers found in {fix_village}")
+                selected_customer = None
+        
+        # Show text input for corrected name
+        if selected_customer:
+            st.markdown("---")
+            corrected_name = st.text_input(
+                "Enter Corrected Name",
+                value=selected_customer,
+                key="corrected_name_input",
+                help="Type the correct spelling of the customer name"
+            )
+            
+            col_btn1, col_btn2 = st.columns(2)
+            
+            with col_btn1:
+                # Save button
+                if st.button("💾 Save Corrected Name", type="primary", use_container_width=True):
+                    if corrected_name.strip():
+                        # Load customer database
+                        customer_db_update = load_customer_database()
+                        
+                        # Remove old name and add corrected name
+                        if selected_customer in customer_db_update[fix_village]:
+                            customer_db_update[fix_village].remove(selected_customer)
+                            customer_db_update[fix_village].append(corrected_name.strip())
+                            
+                            # Save updated database
+                            save_customer_database(customer_db_update)
+                            
+                            st.success(f"✅ Customer name updated successfully!\n\nOld: {selected_customer}\nNew: {corrected_name.strip()}")
+                            st.balloons()
+                            
+                            # Reset form
+                            st.session_state['show_correction_form'] = False
+                            st.rerun()
+                        else:
+                            st.error("Customer not found in database!")
+                    else:
+                        st.error("Please enter a valid customer name!")
+            
+            with col_btn2:
+                # Cancel button
+                if st.button("❌ Cancel", use_container_width=True):
+                    st.session_state['show_correction_form'] = False
+                    st.rerun()
+    
+    # Pricing Update Section
+    st.markdown("---")
+    st.markdown("### 💰 Update Package Prices")
+    
+    # Create a button to show/hide the pricing form
+    if st.button("💵 Change Package Prices", use_container_width=True):
+        st.session_state['show_pricing_form'] = not st.session_state.get('show_pricing_form', False)
+    
+    # Show pricing form if button was clicked
+    if st.session_state.get('show_pricing_form', False):
+        st.markdown("#### Select Package and Update Price")
+        
+        # Load current pricing
+        current_prices = load_pricing_database()
+        
+        col_price1, col_price2 = st.columns(2)
+        
+        with col_price1:
+            # Package selection dropdown
+            selected_package = st.selectbox(
+                "Select Package",
+                options=list(current_prices.keys()),
+                key="price_package_select",
+                help="Choose the package size to update price"
+            )
+        
+        with col_price2:
+            # Show current price
+            current_price = current_prices[selected_package]
+            st.metric(
+                "Current Price",
+                f"₹{current_price}",
+                help="This is the current price for selected package"
+            )
+        
+        # Show input for new price
+        st.markdown("---")
+        new_price = st.number_input(
+            "Enter New Price (₹)",
+            min_value=1,
+            value=current_price,
+            step=1,
+            key="new_price_input",
+            help="Enter the new price for the selected package"
+        )
+        
+        col_price_btn1, col_price_btn2 = st.columns(2)
+        
+        with col_price_btn1:
+            # Save button
+            if st.button("💾 Save New Price", type="primary", use_container_width=True, key="save_price_btn"):
+                if new_price > 0:
+                    # Load pricing database
+                    pricing_db_update = load_pricing_database()
+                    
+                    # Update the price
+                    old_price = pricing_db_update[selected_package]
+                    pricing_db_update[selected_package] = new_price
+                    
+                    # Save updated pricing
+                    save_pricing_database(pricing_db_update)
+                    
+                    st.success(f"✅ Price updated successfully!\n\nPackage: {selected_package}\nOld Price: ₹{old_price}\nNew Price: ₹{new_price}")
+                    st.balloons()
+                    
+                    # Reset form
+                    st.session_state['show_pricing_form'] = False
+                    st.rerun()
+                else:
+                    st.error("Please enter a valid price (greater than 0)!")
+        
+        with col_price_btn2:
+            # Cancel button
+            if st.button("❌ Cancel", use_container_width=True, key="cancel_price_btn"):
+                st.session_state['show_pricing_form'] = False
+                st.rerun()
+    
+    # 
     # Footer
     st.markdown("---")
     st.markdown(
