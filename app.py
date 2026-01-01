@@ -208,14 +208,6 @@ def get_day_from_date(date):
 
 def load_customer_database():
     """
-    Calculate day of the week from a given date
-    Returns: Day name (e.g., 'Monday', 'Tuesday')
-    """
-    return date.strftime("%A")
-
-
-def load_customer_database():
-    """
     Load customer database from JSON file
     Returns: Dictionary with village names as keys and customer lists as values
     """
