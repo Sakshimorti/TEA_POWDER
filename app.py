@@ -1,876 +1,1254 @@
 """
-GOLD Tea Powder - Sales Entry Application
-A Streamlit app for managing tea powder sales entries
+GOLD Tea Powder - Sales Management Application
+A comprehensive Streamlit app with Google Sheets integration
 """
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-import os
+from datetime import datetime, timedelta
 import json
-from streamlit_searchbox import st_searchbox
+import io
+import gspread
+from google.oauth2.service_account import Credentials
 
-# Configure page
+# ============================================
+# PAGE CONFIGURATION
+# ============================================
 st.set_page_config(
-    page_title="GOLD Tea Powder - Sales Entry",
+    page_title="GOLD Tea Powder - Sales Management",
     page_icon="🍵",
-    layout="centered"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Brand and pricing information
+# ============================================
+# CONSTANTS
+# ============================================
 BRAND_NAME = "GOLD Tea Powder"
 TEA_TYPES = ["Mix", "Barik"]
-# All available villages for selection
 VILLAGES = ["vairgwadi", "Bardwadi", "Harali KH", "Harali BK"]
-
-# Packaging options with their rates
-PACKAGING_RATES = {
-    "100gm": 35,
-    "250gm": 85,
-    "500gm": 170,
-    "1kg": 350
-}
-
-# Excel file name
-EXCEL_FILE = "gold_tea_sales.xlsx"
-
-# Customer database file (JSON)
-CUSTOMER_DB_FILE = "customer_database.json"
-
-# Pricing database file (JSON)
-PRICING_DB_FILE = "pricing_database.json"
-
-# Days of the week
 DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+PAYMENT_OPTIONS = ["Paid", "Half paid", "Not paid"]
 
-# Day to Village mapping - Only fixed days are assigned
-# Other days (Tuesday, Wednesday, Thursday) allow manual selection
 DAY_TO_VILLAGE = {
     "Monday": "Harali KH",
     "Friday": "Bardwadi",
     "Saturday": "vairgwadi",
     "Sunday": "Harali BK"
 }
-# Customer names mapped to villages
-# You can add more customers for each village
-VILLAGE_CUSTOMERS = {
-    "vairgwadi": [
-        " RatanaBai Gaddiwadar",
-        " Sadhana Patil",
-        "Hausabai Murkute",
-        " Murari Patil",
-        " Shivaji Sawant",
-        "Prakash Patil",
-        "Suresh Patil",
-        "Anjali Patil",
-        "Chandrkant Sawant",
-        "Tanaji Sutar",
-        "Santosh Gourle",
-        "Sachin Kapase",
-        "Anil Dhotare",
-        "Vasant Patil"
 
-        ],
-        "Bardwadi": [
-            "Basappa Gholrake",
-            "Geeta Gholrake",
-            "Sanjay Gholrake",
-            "Pushpa Gholrake",
-            "Shanakar Pujari",
-            "Mahadev Naik",
-            "Hirabai Gholrake",
-            "Surekha Gholrake",
-            "Shanata Naik",
-            "Balava Gholrake",
-            "Anada Gholrake",
-            "Kempanna Gholrake",
-            "Maruti Gholrake",
-            "Sambhaji Gholrake",
-            "Chandrkant Naik",
-            "Renuka Arun Gholrake",
-            "Gaurabai Gholrake",
-            "Vaishali Gholrake",
-            "Akkatai naik",
-            "Lata Naik",
-            "Savatri Bhoi",
-            "Ratna Rangnavar",
-            "Mahadev Bhoi",
-            "Prashram Bhoi",
-            "Barama Bhoi",
-            "Satyappa Bhoi",
-            "Annappa Bhoi",
-            "Pushpa M Bhoi",
-            "Driver Bhoi",
-            "kori",
-            "Kallappa Kaujalagi",
-            "Suresh Kajualagi",
-            "Champabai Karguppi",
-            "Vaishali Karguppi",
-            "Suvrna Karguppi",
-            "Parubai Margudari",
-            "Kamal Margudari",
-            "Sanjay Margudari",
-            "Raju Margudari",
-            "Kalappa Margudari",
-            "Pradip Khandekar",
-            "Basawan Khandekar",
-            "Mallappa Kamble",
-            "Irrappa Kamble",
-            "Mahadev Kamble",
-            "Ashok Kamble",
-            "Shanta Konare",
-            "Bhairu Ragade",
-            "Chandrva Dhangar",
-            "Kamal Ragade",
-            "Mahadev Ragade",
-            "Rama Naik",
-            "Laxman Naik",
-            "Arun Sutar",
-            "Ankush Sutar"
-
-        ],
-        "Harali KH": [
-            "Sagar Kumbhar",
-            "Shankar Mali",
-            "Shivaji Mali",
-            "Ranjit Chavan",
-            "Surekha Bagadi",
-            "Daynashwar Bagadi ",
-            "Pandit Gurav",
-            "Gajana Patil",
-            "Janadharn Gurav",
-            " Laxman Patil",
-            "Filips Bardaskar",
-           " Chandrkant Kumbhar",
-           "Tanji Aapu Kumbhar",
-           "Sagar Banekar",
-           "Datayatra Bandu Kumbhar",
-           "Aavubai Kumbhar",
-           "Shivaji Kumbhar",
-           "Chaya Kumbhar",
-           "Gaurabai Kumbhar",
-           "Shivaji Kanade",
-           "Siddhava Kanade",
-           "Mayava Kanade",
-           "Anjana Bagadi",
-           "Bagwant Kumbhar",
-           "Jaywant Kumbhar",
-           "Santosh Bagadi",
-           "Arun Chothe",
-           "Kavita Chothe",
-           "Maruti Naik",
-           "Prema Bagadi"
-        ],
-        "Harali BK": [
-            "Vinayak Khanapure",
-            "Ravi Morti",
-            "Vijay Kamble",
-            "Dipak Kamble",
-            "Shanakar Kamble",
-            "Sanjay Kamble",
-            "Suresh Kori",
-            "Pundalik Kamble",
-            "Parshram Kamble",
-            "Suraj Kamble",
-            "Bharati Khavare",
-            "Narayan Bhalekar",
-            "Raju Chavan",
-            "Kavita Kokitkar",
-            "Hari Patake",
-            "Vandana Lohar",
-            "Sandip Patil",
-            "Sunil Khavare",
-            "Vimal Khavare",
-            "Aalka Khavare",
-            "Sandip Khavare",
-            "Shashikant Murukate",
-            "Netaji Murukate",
-            "Sanjay Hodage",
-            "Geeta Khavare",
-            "Narayan Patil",
-            "Ranaga Khavare",
-            "Rupali Koikitkar",
-            "Jayshri Parit",
-            "Dhanaji Davari",
-            "Shantaram Sutar",
-            "Ravindra Khavare"
-        ]
-    
+DEFAULT_PRICING = {
+    "100gm": 35,
+    "250gm": 85,
+    "500gm": 170,
+    "1kg": 350
 }
 
-def get_day_from_date(date):
-    """
-    Calculate day of the week from a given date
-    Returns: Day name (e.g., 'Monday', 'Tuesday')
-    """
-    return date.strftime("%A")
+# Google Sheets Configuration
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
 
+# Sheet names
+SALES_SHEET = "Sales"
+CUSTOMERS_SHEET = "Customers"
+PRICING_SHEET = "Pricing"
+SETTINGS_SHEET = "Settings"
 
-def load_customer_database():
-    """
-    Load customer database from JSON file
-    Returns: Dictionary with village names as keys and customer lists as values
-    """
-    if os.path.exists(CUSTOMER_DB_FILE):
-        try:
-            with open(CUSTOMER_DB_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return initialize_default_customers()
-    else:
-        return initialize_default_customers()
+# ============================================
+# CUSTOM CSS FOR BETTER UI
+# ============================================
+st.markdown("""
+<style>
+    /* Main container */
+    .main .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1a472a 0%, #2d5a3d 100%);
+    }
+    
+    [data-testid="stSidebar"] .stMarkdown {
+        color: white;
+    }
+    
+    /* Cards */
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .metric-card h3 {
+        margin: 0;
+        font-size: 2rem;
+    }
+    
+    .metric-card p {
+        margin: 5px 0 0 0;
+        opacity: 0.9;
+    }
+    
+    /* Success card */
+    .success-card {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        padding: 20px;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+    }
+    
+    /* Warning card */
+    .warning-card {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 20px;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+    }
+    
+    /* Info card */
+    .info-card {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        padding: 20px;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+    }
+    
+    /* Page title */
+    .page-title {
+        background: linear-gradient(90deg, #1a472a 0%, #2d5a3d 100%);
+        padding: 15px 25px;
+        border-radius: 10px;
+        color: white;
+        margin-bottom: 20px;
+    }
+    
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* Button styling */
+    .stButton > button {
+        border-radius: 10px;
+        font-weight: 600;
+    }
+    
+    /* Input styling */
+    .stTextInput > div > div > input {
+        border-radius: 8px;
+    }
+    
+    .stSelectbox > div > div {
+        border-radius: 8px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
+# ============================================
+# AUTHENTICATION
+# ============================================
+def check_password():
+    """Returns True if the user has entered the correct password."""
+    
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == st.secrets.get("app_password", "gold123"):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
 
-def load_pricing_database():
-    """
-    Load pricing database from JSON file
-    Returns: Dictionary with packaging names as keys and prices as values
-    """
-    if os.path.exists(PRICING_DB_FILE):
-        try:
-            with open(PRICING_DB_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return PACKAGING_RATES.copy()
-    else:
-        return PACKAGING_RATES.copy()
+    if "password_correct" not in st.session_state:
+        # First run, show login
+        st.markdown("""
+        <div style='text-align: center; padding: 50px;'>
+            <h1>🍵 GOLD Tea Powder</h1>
+            <h3>Sales Management System</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.text_input(
+                "Enter Password", 
+                type="password", 
+                on_change=password_entered, 
+                key="password",
+                placeholder="Enter your password"
+            )
+            st.caption("Default password: gold123")
+        return False
+    
+    elif not st.session_state["password_correct"]:
+        # Password incorrect
+        st.markdown("""
+        <div style='text-align: center; padding: 50px;'>
+            <h1>🍵 GOLD Tea Powder</h1>
+            <h3>Sales Management System</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.text_input(
+                "Enter Password", 
+                type="password", 
+                on_change=password_entered, 
+                key="password",
+                placeholder="Enter your password"
+            )
+            st.error("😕 Incorrect password. Please try again.")
+        return False
+    
+    return True
 
-
-def save_pricing_database(pricing_db):
-    """
-    Save pricing database to JSON file
-    """
+# ============================================
+# GOOGLE SHEETS FUNCTIONS
+# ============================================
+@st.cache_resource
+def get_google_sheets_connection():
+    """Create a connection to Google Sheets"""
     try:
-        with open(PRICING_DB_FILE, 'w', encoding='utf-8') as f:
-            json.dump(pricing_db, f, indent=4, ensure_ascii=False)
+        # Try to get credentials from Streamlit secrets
+        if "gcp_service_account" in st.secrets:
+            creds = Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"],
+                scopes=SCOPES
+            )
+            client = gspread.authorize(creds)
+            return client
+        else:
+            st.warning("⚠️ Google Sheets not configured. Using local storage.")
+            return None
     except Exception as e:
-        st.warning(f"Could not save pricing database: {str(e)}")
+        st.warning(f"⚠️ Could not connect to Google Sheets: {str(e)}")
+        return None
 
+def get_or_create_spreadsheet(client, spreadsheet_name="GOLD_Tea_Sales"):
+    """Get or create the main spreadsheet"""
+    try:
+        spreadsheet = client.open(spreadsheet_name)
+    except gspread.SpreadsheetNotFound:
+        spreadsheet = client.create(spreadsheet_name)
+        # Share with yourself (optional)
+        # spreadsheet.share('your-email@gmail.com', perm_type='user', role='writer')
+    return spreadsheet
 
-def initialize_default_customers():
-    """
-    Initialize default customer database
-    """
+def get_or_create_worksheet(spreadsheet, sheet_name, headers=None):
+    """Get or create a worksheet with headers"""
+    try:
+        worksheet = spreadsheet.worksheet(sheet_name)
+    except gspread.WorksheetNotFound:
+        worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=20)
+        if headers:
+            worksheet.append_row(headers)
+    return worksheet
+
+def init_google_sheets():
+    """Initialize all Google Sheets worksheets"""
+    client = get_google_sheets_connection()
+    if client is None:
+        return None
+    
+    spreadsheet = get_or_create_spreadsheet(client)
+    
+    # Sales sheet headers
+    sales_headers = [
+        "ID", "Date", "Day", "Village", "Customer Name", "Brand", 
+        "Tea Type", "Packaging", "Rate", "Quantity", "Total Amount",
+        "Payment Status", "Amount Paid", "Balance", "Created At", "Updated At"
+    ]
+    get_or_create_worksheet(spreadsheet, SALES_SHEET, sales_headers)
+    
+    # Customers sheet headers
+    customers_headers = ["Village", "Customer Name", "Added On"]
+    get_or_create_worksheet(spreadsheet, CUSTOMERS_SHEET, customers_headers)
+    
+    # Pricing sheet headers
+    pricing_headers = ["Package", "Rate", "Updated On"]
+    pricing_ws = get_or_create_worksheet(spreadsheet, PRICING_SHEET, pricing_headers)
+    
+    # Initialize default pricing if empty
+    if len(pricing_ws.get_all_values()) <= 1:
+        for package, rate in DEFAULT_PRICING.items():
+            pricing_ws.append_row([package, rate, datetime.now().strftime("%Y-%m-%d %H:%M")])
+    
+    return spreadsheet
+
+# ============================================
+# DATA FUNCTIONS
+# ============================================
+@st.cache_data(ttl=30)
+def load_sales_data(_spreadsheet=None):
+    """Load all sales data from Google Sheets or local"""
+    if _spreadsheet:
+        try:
+            worksheet = _spreadsheet.worksheet(SALES_SHEET)
+            data = worksheet.get_all_records()
+            if data:
+                df = pd.DataFrame(data)
+                if 'Date' in df.columns:
+                    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+                return df
+        except Exception as e:
+            st.error(f"Error loading sales: {str(e)}")
+    
+    return pd.DataFrame(columns=[
+        "ID", "Date", "Day", "Village", "Customer Name", "Brand",
+        "Tea Type", "Packaging", "Rate", "Quantity", "Total Amount",
+        "Payment Status", "Amount Paid", "Balance", "Created At", "Updated At"
+    ])
+
+@st.cache_data(ttl=60)
+def load_customers_data(_spreadsheet=None):
+    """Load customers from Google Sheets or local"""
+    if _spreadsheet:
+        try:
+            worksheet = _spreadsheet.worksheet(CUSTOMERS_SHEET)
+            data = worksheet.get_all_records()
+            customers = {}
+            for row in data:
+                village = row.get('Village', '')
+                customer = row.get('Customer Name', '')
+                if village and customer:
+                    if village not in customers:
+                        customers[village] = []
+                    if customer not in customers[village]:
+                        customers[village].append(customer)
+            return customers
+        except Exception as e:
+            st.error(f"Error loading customers: {str(e)}")
+    
+    # Return default customers
+    return load_default_customers()
+
+@st.cache_data(ttl=60)
+def load_pricing_data(_spreadsheet=None):
+    """Load pricing from Google Sheets or local"""
+    if _spreadsheet:
+        try:
+            worksheet = _spreadsheet.worksheet(PRICING_SHEET)
+            data = worksheet.get_all_records()
+            pricing = {}
+            for row in data:
+                package = row.get('Package', '')
+                rate = row.get('Rate', 0)
+                if package:
+                    pricing[package] = int(rate)
+            if pricing:
+                return pricing
+        except Exception as e:
+            st.error(f"Error loading pricing: {str(e)}")
+    
+    return DEFAULT_PRICING.copy()
+
+def load_default_customers():
+    """Load default customer list"""
     return {
-       "vairgwadi": [
-        " RatanaBai Gaddiwadar",
-        " Sadhana Patil",
-        "Hausabai Murkute",
-        " Murari Patil",
-        " Shivaji Sawant",
-        "Prakash Patil",
-        "Suresh Patil",
-        "Anjali Patil",
-        "Chandrkant Sawant",
-        "Tanaji Sutar",
-        "Santosh Gourle",
-        "Sachin Kapase",
-        "Anil Dhotare",
-        "Vasant Patil"
-
+        "vairgwadi": [
+            "RatanaBai Gaddiwadar", "Sadhana Patil", "Hausabai Murkute",
+            "Murari Patil", "Shivaji Sawant", "Prakash Patil", "Suresh Patil",
+            "Anjali Patil", "Chandrkant Sawant", "Tanaji Sutar", "Santosh Gourle",
+            "Sachin Kapase", "Anil Dhotare", "Vasant Patil"
         ],
         "Bardwadi": [
-            "Basappa Gholrake",
-            "Geeta Gholrake",
-            "Sanjay Gholrake",
-            "Pushpa Gholrake",
-            "Shanakar Pujari",
-            "Mahadev Naik",
-            "Hirabai Gholrake",
-            "Surekha Gholrake",
-            "Shanata Naik",
-            "Balava Gholrake",
-            "Anada Gholrake",
-            "Kempanna Gholrake",
-            "Maruti Gholrake",
-            "Sambhaji Gholrake",
-            "Chandrkant Naik",
-            "Renuka Arun Gholrake",
-            "Gaurabai Gholrake",
-            "Vaishali Gholrake",
-            "Akkatai naik",
-            "Lata Naik",
-            "Savatri Bhoi",
-            "Ratna Rangnavar",
-            "Mahadev Bhoi",
-            "Prashram Bhoi",
-            "Barama Bhoi",
-            "Satyappa Bhoi",
-            "Annappa Bhoi",
-            "Pushpa M Bhoi",
-            "Driver Bhoi",
-            "kori",
-            "Kallappa Kaujalagi",
-            "Suresh Kajualagi",
-            "Champabai Karguppi",
-            "Vaishali Karguppi",
-            "Suvrna Karguppi",
-            "Parubai Margudari",
-            "Kamal Margudari",
-            "Sanjay Margudari",
-            "Raju Margudari",
-            "Kalappa Margudari",
-            "Pradip Khandekar",
-            "Basawan Khandekar",
-            "Mallappa Kamble",
-            "Irrappa Kamble",
-            "Mahadev Kamble",
-            "Ashok Kamble",
-            "Shanta Konare",
-            "Bhairu Ragade",
-            "Chandrva Dhangar",
-            "Kamal Ragade",
-            "Mahadev Ragade",
-            "Rama Naik",
-            "Laxman Naik",
-            "Arun Sutar",
-            "Ankush Sutar"
-
+            "Basappa Gholrake", "Geeta Gholrake", "Sanjay Gholrake", "Pushpa Gholrake",
+            "Shanakar Pujari", "Mahadev Naik", "Hirabai Gholrake", "Surekha Gholrake",
+            "Shanata Naik", "Balava Gholrake", "Anada Gholrake", "Kempanna Gholrake",
+            "Maruti Gholrake", "Sambhaji Gholrake", "Chandrkant Naik", "Renuka Arun Gholrake",
+            "Gaurabai Gholrake", "Vaishali Gholrake", "Akkatai naik", "Lata Naik",
+            "Savatri Bhoi", "Ratna Rangnavar", "Mahadev Bhoi", "Prashram Bhoi",
+            "Barama Bhoi", "Satyappa Bhoi", "Annappa Bhoi", "Pushpa M Bhoi",
+            "Driver Bhoi", "kori", "Kallappa Kaujalagi", "Suresh Kajualagi"
         ],
         "Harali KH": [
-            "Sagar Kumbhar",
-            "Shankar Mali",
-            "Shivaji Mali",
-            "Ranjit Chavan",
-            "Surekha Bagadi",
-            "Daynashwar Bagadi ",
-            "Pandit Gurav",
-            "Gajana Patil",
-            "Janadharn Gurav",
-            " Laxman Patil",
-            "Filips Bardaskar",
-           " Chandrkant Kumbhar",
-           "Tanji Aapu Kumbhar",
-           "Sagar Banekar",
-           "Datayatra Bandu Kumbhar",
-           "Aavubai Kumbhar",
-           "Shivaji Kumbhar",
-           "Chaya Kumbhar",
-           "Gaurabai Kumbhar",
-           "Shivaji Kanade",
-           "Siddhava Kanade",
-           "Mayava Kanade",
-           "Anjana Bagadi",
-           "Bagwant Kumbhar",
-           "Jaywant Kumbhar",
-           "Santosh Bagadi",
-           "Arun Chothe",
-           "Kavita Chothe",
-           "Maruti Naik",
-           "Prema Bagadi"
+            "Sagar Kumbhar", "Shankar Mali", "Shivaji Mali", "Ranjit Chavan",
+            "Surekha Bagadi", "Daynashwar Bagadi", "Pandit Gurav", "Gajana Patil",
+            "Janadharn Gurav", "Laxman Patil", "Filips Bardaskar", "Chandrkant Kumbhar",
+            "Tanji Aapu Kumbhar", "Sagar Banekar", "Datayatra Bandu Kumbhar",
+            "Aavubai Kumbhar", "Shivaji Kumbhar", "Chaya Kumbhar", "Gaurabai Kumbhar",
+            "Shivaji Kanade", "Siddhava Kanade", "Mayava Kanade", "Anjana Bagadi"
         ],
         "Harali BK": [
-            "Vinayak Khanapure",
-            "Ravi Morti",
-            "Vijay Kamble",
-            "Dipak Kamble",
-            "Shanakar Kamble",
-            "Sanjay Kamble",
-            "Suresh Kori",
-            "Pundalik Kamble",
-            "Parshram Kamble",
-            "Suraj Kamble",
-            "Bharati Khavare",
-            "Narayan Bhalekar",
-            "Raju Chavan",
-            "Kavita Kokitkar",
-            "Hari Patake",
-            "Vandana Lohar",
-            "Sandip Patil",
-            "Sunil Khavare",
-            "Vimal Khavare",
-            "Aalka Khavare",
-            "Sandip Khavare",
-            "Shashikant Murukate",
-            "Netaji Murukate",
-            "Sanjay Hodage",
-            "Geeta Khavare",
-            "Narayan Patil",
-            "Ranaga Khavare",
-            "Rupali Koikitkar",
-            "Jayshri Parit",
-            "Dhanaji Davari",
-            "Shantaram Sutar",
-            "Ravindra Khavare"
+            "Vinayak Khanapure", "Ravi Morti", "Vijay Kamble", "Dipak Kamble",
+            "Shanakar Kamble", "Sanjay Kamble", "Suresh Kori", "Pundalik Kamble",
+            "Parshram Kamble", "Suraj Kamble", "Bharati Khavare", "Narayan Bhalekar",
+            "Raju Chavan", "Kavita Kokitkar", "Hari Patake", "Vandana Lohar",
+            "Sandip Patil", "Sunil Khavare", "Vimal Khavare", "Aalka Khavare"
         ]
-       
     }
 
-
-def save_customer_database(customer_db):
-    """
-    Save customer database to JSON file
-    """
-    try:
-        with open(CUSTOMER_DB_FILE, 'w', encoding='utf-8') as f:
-            json.dump(customer_db, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        st.warning(f"Could not save customer database: {str(e)}")
-
-
-def add_customer_to_database(village, customer_name):
-    """
-    Add a new customer to the database if not already present
-    Returns: True if customer was added, False if already exists
-    """
-    customer_db = load_customer_database()
-    
-    # Ensure village exists in database
-    if village not in customer_db:
-        customer_db[village] = []
-    
-    # Check if customer already exists (case-insensitive)
-    customer_name_lower = customer_name.strip().lower()
-    existing_customers_lower = [c.lower() for c in customer_db[village]]
-    
-    if customer_name_lower not in existing_customers_lower:
-        # Add new customer
-        customer_db[village].append(customer_name.strip())
-        save_customer_database(customer_db)
-        return True
-    
+def save_sale(spreadsheet, sale_data):
+    """Save a new sale to Google Sheets"""
+    if spreadsheet:
+        try:
+            worksheet = spreadsheet.worksheet(SALES_SHEET)
+            
+            # Generate unique ID
+            all_data = worksheet.get_all_values()
+            new_id = len(all_data)
+            
+            # Calculate balance
+            total = sale_data['Total Amount']
+            paid = sale_data['Amount Paid']
+            balance = total - paid if sale_data['Payment Status'] != 'Paid' else 0
+            
+            row = [
+                new_id,
+                sale_data['Date'],
+                sale_data['Day'],
+                sale_data['Village'],
+                sale_data['Customer Name'],
+                sale_data['Brand'],
+                sale_data['Tea Type'],
+                sale_data['Packaging'],
+                sale_data['Rate'],
+                sale_data['Quantity'],
+                sale_data['Total Amount'],
+                sale_data['Payment Status'],
+                sale_data['Amount Paid'],
+                balance,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ]
+            worksheet.append_row(row)
+            
+            # Clear cache to refresh data
+            load_sales_data.clear()
+            return True
+        except Exception as e:
+            st.error(f"Error saving sale: {str(e)}")
+            return False
     return False
 
+def update_sale(spreadsheet, row_index, updated_data):
+    """Update an existing sale"""
+    if spreadsheet:
+        try:
+            worksheet = spreadsheet.worksheet(SALES_SHEET)
+            
+            # Calculate balance
+            total = updated_data['Total Amount']
+            paid = updated_data['Amount Paid']
+            balance = total - paid if updated_data['Payment Status'] != 'Paid' else 0
+            
+            # Update the row (row_index + 2 because of header and 1-based index)
+            cell_range = f'B{row_index + 2}:P{row_index + 2}'
+            values = [[
+                updated_data['Date'],
+                updated_data['Day'],
+                updated_data['Village'],
+                updated_data['Customer Name'],
+                updated_data['Brand'],
+                updated_data['Tea Type'],
+                updated_data['Packaging'],
+                updated_data['Rate'],
+                updated_data['Quantity'],
+                updated_data['Total Amount'],
+                updated_data['Payment Status'],
+                updated_data['Amount Paid'],
+                balance,
+                worksheet.cell(row_index + 2, 15).value,  # Keep original Created At
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ]]
+            worksheet.update(cell_range, values)
+            
+            load_sales_data.clear()
+            return True
+        except Exception as e:
+            st.error(f"Error updating sale: {str(e)}")
+            return False
+    return False
 
-def search_customers(searchterm: str, village: str):
-    """
-    Search function for customer searchbox
-    Returns list of customers matching the search term
-    """
-    customer_db = load_customer_database()
-    customers = customer_db.get(village, [])
-    
-    if not searchterm:
-        # Return all customers if no search term
-        return customers
-    
-    # Filter customers that contain the search term (case-insensitive)
-    searchterm_lower = searchterm.lower()
-    filtered = [c for c in customers if searchterm_lower in c.lower()]
-    
-    # If searchterm doesn't match any customer, allow it as a new entry
-    if not filtered:
-        return [searchterm]
-    
-    return filtered
+def delete_sale(spreadsheet, row_index):
+    """Delete a sale from Google Sheets"""
+    if spreadsheet:
+        try:
+            worksheet = spreadsheet.worksheet(SALES_SHEET)
+            worksheet.delete_rows(row_index + 2)  # +2 for header and 1-based index
+            load_sales_data.clear()
+            return True
+        except Exception as e:
+            st.error(f"Error deleting sale: {str(e)}")
+            return False
+    return False
 
+def add_customer(spreadsheet, village, customer_name):
+    """Add a new customer to Google Sheets"""
+    if spreadsheet:
+        try:
+            worksheet = spreadsheet.worksheet(CUSTOMERS_SHEET)
+            worksheet.append_row([
+                village,
+                customer_name.strip(),
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            ])
+            load_customers_data.clear()
+            return True
+        except Exception as e:
+            st.error(f"Error adding customer: {str(e)}")
+            return False
+    return False
 
-def save_to_excel(data):
-    """
-    Save sales data to Excel file
-    If file exists, append the data. Otherwise, create a new file.
-    """
-    try:
-        # Create a DataFrame from the data
-        df_new = pd.DataFrame([data])
+def delete_customer(spreadsheet, village, customer_name):
+    """Delete a customer from Google Sheets"""
+    if spreadsheet:
+        try:
+            worksheet = spreadsheet.worksheet(CUSTOMERS_SHEET)
+            data = worksheet.get_all_values()
+            for i, row in enumerate(data):
+                if len(row) >= 2 and row[0] == village and row[1] == customer_name:
+                    worksheet.delete_rows(i + 1)
+                    load_customers_data.clear()
+                    return True
+        except Exception as e:
+            st.error(f"Error deleting customer: {str(e)}")
+    return False
+
+def update_pricing(spreadsheet, package, new_rate):
+    """Update pricing in Google Sheets"""
+    if spreadsheet:
+        try:
+            worksheet = spreadsheet.worksheet(PRICING_SHEET)
+            data = worksheet.get_all_values()
+            for i, row in enumerate(data):
+                if len(row) >= 1 and row[0] == package:
+                    worksheet.update_cell(i + 1, 2, new_rate)
+                    worksheet.update_cell(i + 1, 3, datetime.now().strftime("%Y-%m-%d %H:%M"))
+                    load_pricing_data.clear()
+                    return True
+        except Exception as e:
+            st.error(f"Error updating pricing: {str(e)}")
+    return False
+
+# ============================================
+# HELPER FUNCTIONS
+# ============================================
+def get_day_from_date(date):
+    """Get day name from date"""
+    return date.strftime("%A")
+
+def generate_id():
+    """Generate unique ID"""
+    return datetime.now().strftime("%Y%m%d%H%M%S")
+
+# ============================================
+# PAGE FUNCTIONS
+# ============================================
+def render_sidebar():
+    """Render the sidebar navigation"""
+    with st.sidebar:
+        st.markdown("""
+        <div style='text-align: center; padding: 20px 0;'>
+            <h1 style='color: white; margin: 0;'>🍵</h1>
+            <h2 style='color: white; margin: 0;'>GOLD Tea</h2>
+            <p style='color: #a8d5a2; margin: 5px 0;'>Sales Management</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Check if file exists
-        if os.path.exists(EXCEL_FILE):
-            # Read existing data
-            df_existing = pd.read_excel(EXCEL_FILE)
-            # Append new data
-            df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-            # Save to Excel
-            df_combined.to_excel(EXCEL_FILE, index=False, engine='openpyxl')
-        else:
-            # Create new file with the data
-            df_new.to_excel(EXCEL_FILE, index=False, engine='openpyxl')
-    except PermissionError:
-        raise PermissionError(f"Cannot save to '{EXCEL_FILE}'. Please close the Excel file if it's open and try again.")
-    except Exception as e:
-        raise Exception(f"Error saving data: {str(e)}")
-
-
-def load_recent_entries(n=5):
-    """
-    Load the most recent n entries from the Excel file
-    Returns: DataFrame with recent entries or None if file doesn't exist
-    """
-    if os.path.exists(EXCEL_FILE):
-        df = pd.read_excel(EXCEL_FILE)
-        # Return last n entries in reverse order (most recent first)
-        return df.tail(n).iloc[::-1]
-    return None
-
-
-# Main app
-def main():
-    # App title and header
-    st.title("🍵 GOLD Tea Powder")
-    st.subheader("Sales Entry Application")
-    st.markdown("---")
-    
-    # Sales entry form
-    st.markdown("### Enter Sales Details")
-    
-    # Row 1: Date and Day
-    col1, col2 = st.columns(2)
-    with col1:
-        # Date input - auto-filled with today's date
-        selected_date = st.date_input(
-            "Date",
-            value=datetime.today(),
-            help="Select the sales date"
+        st.markdown("---")
+        
+        # Navigation
+        page = st.radio(
+            "📍 Navigation",
+            ["🏠 Dashboard", "➕ New Sale", "📋 View Sales", "📊 Reports", 
+             "💰 Pending Payments", "⚙️ Settings"],
+            label_visibility="collapsed"
         )
+        
+        st.markdown("---")
+        
+        # Quick stats
+        if 'spreadsheet' in st.session_state and st.session_state.spreadsheet:
+            df = load_sales_data(st.session_state.spreadsheet)
+            if not df.empty:
+                today = datetime.now().date()
+                today_sales = df[pd.to_datetime(df['Date']).dt.date == today] if 'Date' in df.columns else pd.DataFrame()
+                
+                st.markdown("### 📈 Today's Stats")
+                st.metric("Sales", len(today_sales))
+                if not today_sales.empty and 'Total Amount' in today_sales.columns:
+                    st.metric("Revenue", f"₹{today_sales['Total Amount'].sum():,.0f}")
+        
+        st.markdown("---")
+        
+        # Logout button
+        if st.button("🚪 Logout", use_container_width=True):
+            st.session_state["password_correct"] = False
+            st.rerun()
+        
+        st.markdown("""
+        <div style='text-align: center; padding: 20px 0; color: #a8d5a2;'>
+            <small>© 2026 GOLD Tea Powder</small>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        return page
+
+def render_dashboard(spreadsheet):
+    """Render the dashboard page"""
+    st.markdown("<div class='page-title'><h2>🏠 Dashboard</h2></div>", unsafe_allow_html=True)
+    
+    df = load_sales_data(spreadsheet)
+    
+    if df.empty:
+        st.info("No sales data yet. Start by adding your first sale!")
+        return
+    
+    # Date filters
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        period = st.selectbox("📅 Period", ["Today", "This Week", "This Month", "All Time"])
+    
+    # Filter data based on period
+    today = datetime.now().date()
+    if 'Date' in df.columns:
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        
+        if period == "Today":
+            filtered_df = df[df['Date'].dt.date == today]
+        elif period == "This Week":
+            week_start = today - timedelta(days=today.weekday())
+            filtered_df = df[df['Date'].dt.date >= week_start]
+        elif period == "This Month":
+            filtered_df = df[(df['Date'].dt.month == today.month) & (df['Date'].dt.year == today.year)]
+        else:
+            filtered_df = df
+    else:
+        filtered_df = df
+    
+    # Key metrics
+    st.markdown("### 📊 Key Metrics")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        total_sales = filtered_df['Total Amount'].sum() if 'Total Amount' in filtered_df.columns else 0
+        st.markdown(f"""
+        <div class='metric-card'>
+            <h3>₹{total_sales:,.0f}</h3>
+            <p>Total Sales</p>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col2:
-        # Calculate day from selected date - updates automatically when date changes
-        auto_day = get_day_from_date(selected_date)
-        # Day dropdown - auto-filled but editable
-        selected_day = st.selectbox(
-            "Day",
-            options=DAYS_OF_WEEK,
-            index=DAYS_OF_WEEK.index(auto_day),
-            help="Day is auto-calculated from date but can be changed"
-        )
+        total_orders = len(filtered_df)
+        st.markdown(f"""
+        <div class='success-card'>
+            <h3>{total_orders}</h3>
+            <p>Total Orders</p>
+        </div>
+        """, unsafe_allow_html=True)
     
-    # Row 2: Village and Customer Name
-    col3, col4 = st.columns(2)
     with col3:
-        # Auto-assign village based on the selected day
-        auto_village = DAY_TO_VILLAGE.get(selected_day, VILLAGES[0])
-        # Village selection - auto-selected based on day but editable
-        village = st.selectbox(
-            "Village Name",
-            options=VILLAGES,
-            index=VILLAGES.index(auto_village) if auto_village in VILLAGES else 0,
-            help="Village is auto-assigned based on day but can be changed"
-        )
+        total_quantity = filtered_df['Quantity'].sum() if 'Quantity' in filtered_df.columns else 0
+        st.markdown(f"""
+        <div class='info-card'>
+            <h3>{total_quantity:,.0f}</h3>
+            <p>Items Sold</p>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col4:
-        # Load customer database
-        customer_db = load_customer_database()
-        
-        # Get customer suggestions for the selected village
-        customer_suggestions = customer_db.get(village, [])
-        
-        # Searchable dropdown - type or select customer
-        customer_name = st_searchbox(
-            search_function=lambda searchterm: search_customers(searchterm, village),
-            label="Customer Name",
-            placeholder="Type or select customer name",
-            default=None,
-            clear_on_submit=False,
-            key=f"customer_search_{village}"
-        )
-        
-        # If no customer selected/typed, show empty
-        if customer_name is None:
-            customer_name = ""
+        pending = filtered_df[filtered_df['Payment Status'] != 'Paid']['Balance'].sum() if 'Balance' in filtered_df.columns else 0
+        st.markdown(f"""
+        <div class='warning-card'>
+            <h3>₹{pending:,.0f}</h3>
+            <p>Pending Amount</p>
+        </div>
+        """, unsafe_allow_html=True)
     
-    # Row 3: Tea Type and Packaging
-    col5, col6 = st.columns(2)
-    with col5:
-        # Tea type selection
-        tea_type = st.selectbox(
-            "Tea Type",
-            options=TEA_TYPES,
-            help="Select the type of tea"
-        )
-    
-    with col6:
-        # Packaging selection
-        # Load current pricing from database
-        current_pricing = load_pricing_database()
-        packaging = st.selectbox(
-            "Packaging",
-            options=list(current_pricing.keys()),
-            help="Select packaging size"
-        )
-    
-    # Row 4: Rate and Quantity
-    col7, col8 = st.columns(2)
-    with col7:
-        # Rate - auto-filled based on packaging selection from database
-        rate = current_pricing[packaging]
-        st.number_input(
-            "Rate (₹)",
-            value=rate,
-            disabled=True,
-            help="Rate is auto-filled based on packaging"
-        )
-    
-    with col8:
-        # Quantity input
-        quantity = st.number_input(
-            "Quantity",
-            min_value=1,
-            value=1,
-            step=1,
-            help="Enter the quantity"
-        )
-    
-    # Total Amount - auto-calculated
-    total_amount = rate * quantity
-    st.number_input(
-        "Total Amount (₹)",
-        value=total_amount,
-        disabled=True,
-        help="Total amount is automatically calculated (Rate × Quantity)"
-    )
-    
-    # Row 5: Payment status
-    st.markdown("### Payment")
-    col_p1, col_p2 = st.columns(2)
-    with col_p1:
-        payment_status = st.selectbox(
-            "Payment Status",
-            options=["Paid", "Half paid", "Not paid"],
-            index=0,
-            help="Select payment status"
-        )
-    with col_p2:
-        amount_paid = 0.0
-        # Show numeric input only when 'Half paid' is selected
-        if payment_status == "Half paid":
-            amount_paid = st.number_input(
-                "Amount Paid (₹)",
-                min_value=0.0,
-                value=0.0,
-                step=1.0,
-                format="%.2f",
-                help="Enter the amount paid (numbers only)"
-            )
-    
-    # Submit button
     st.markdown("---")
-    submitted = st.button("💾 Save Sales Entry", use_container_width=True, type="primary")
     
-    # Handle form submission
-    if submitted:
-        # Validate customer name
-        if not customer_name.strip():
-            st.error("⚠️ Please enter customer name!")
-        else:
-            # Check if this is a new customer for this village
-            is_new_customer = add_customer_to_database(village, customer_name.strip())
-            
-            # Prepare data to save
-            sales_data = {
-                "Date": selected_date.strftime("%Y-%m-%d"),
-                "Day": selected_day,
-                "Village": village,
-                "Customer Name": customer_name.strip(),
-                "Brand": BRAND_NAME,
-                "Tea Type": tea_type,
-                "Packaging": packaging,
-                "Rate": rate,
-                "Quantity": quantity,
-                "Total Amount": total_amount,
-                "Payment Status": payment_status,
-                "Amount Paid": float(amount_paid)
-            }
-            
-            # Save to Excel
-            try:
-                save_to_excel(sales_data)
-                
-                # Show success message
-                if is_new_customer:
-                    st.success(f"✅ Sales entry saved successfully! New customer '{customer_name.strip()}' added to {village}.")
-                else:
-                    st.success("✅ Sales entry saved successfully!")
-                st.balloons()
-            except Exception as e:
-                st.error(f"❌ Error saving data: {str(e)}")
+    # Charts
+    col1, col2 = st.columns(2)
     
-    # Display recent entries
-    st.markdown("---")
-    st.markdown("### 📊 Recent Sales Entries (Last 5)")
+    with col1:
+        st.markdown("### 🏘️ Sales by Village")
+        if 'Village' in filtered_df.columns and 'Total Amount' in filtered_df.columns:
+            village_sales = filtered_df.groupby('Village')['Total Amount'].sum().reset_index()
+            if not village_sales.empty:
+                st.bar_chart(village_sales.set_index('Village'))
     
-    recent_entries = load_recent_entries(5)
+    with col2:
+        st.markdown("### 🍵 Sales by Tea Type")
+        if 'Tea Type' in filtered_df.columns and 'Total Amount' in filtered_df.columns:
+            tea_sales = filtered_df.groupby('Tea Type')['Total Amount'].sum().reset_index()
+            if not tea_sales.empty:
+                st.bar_chart(tea_sales.set_index('Tea Type'))
     
-    if recent_entries is not None and not recent_entries.empty:
-        # Display as a table
-        st.dataframe(
-            recent_entries,
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        # Show summary statistics
-        st.markdown("#### Quick Summary")
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            st.metric("Total Sales", f"₹{recent_entries['Total Amount'].sum():.2f}")
-        with col_b:
-            st.metric("Total Quantity", int(recent_entries['Quantity'].sum()))
-        with col_c:
-            st.metric("Entries", len(recent_entries))
-    else:
-        st.info("No sales entries yet. Start by adding your first sale!")
-    
-    # Customer Name Correction Section
-    st.markdown("---")
-    st.markdown("### ✏️ Correct Customer Name Spelling")
-    
-    # Create a button to show/hide the correction form
-    if st.button("🔧 Fix Customer Name Spelling", use_container_width=True):
-        st.session_state['show_correction_form'] = not st.session_state.get('show_correction_form', False)
-    
-    # Show correction form if button was clicked
-    if st.session_state.get('show_correction_form', False):
-        st.markdown("#### Select and Edit Customer Name")
-        
-        col_fix1, col_fix2 = st.columns(2)
-        
-        with col_fix1:
-            # Village selection dropdown
-            fix_village = st.selectbox(
-                "Select Village",
-                options=VILLAGES,
-                key="fix_village_select",
-                help="Choose the village where the customer belongs"
-            )
-        
-        with col_fix2:
-            # Load customers for the selected village
-            customer_db_fix = load_customer_database()
-            customers_in_village = customer_db_fix.get(fix_village, [])
-            
-            # Customer selection dropdown
-            if customers_in_village:
-                selected_customer = st.selectbox(
-                    "Select Customer to Edit",
-                    options=customers_in_village,
-                    key="fix_customer_select",
-                    help="Choose the customer name you want to correct"
-                )
-            else:
-                st.warning(f"No customers found in {fix_village}")
-                selected_customer = None
-        
-        # Show text input for corrected name
-        if selected_customer:
-            st.markdown("---")
-            corrected_name = st.text_input(
-                "Enter Corrected Name",
-                value=selected_customer,
-                key="corrected_name_input",
-                help="Type the correct spelling of the customer name"
-            )
-            
-            col_btn1, col_btn2 = st.columns(2)
-            
-            with col_btn1:
-                # Save button
-                if st.button("💾 Save Corrected Name", type="primary", use_container_width=True):
-                    if corrected_name.strip():
-                        # Load customer database
-                        customer_db_update = load_customer_database()
-                        
-                        # Remove old name and add corrected name
-                        if selected_customer in customer_db_update[fix_village]:
-                            customer_db_update[fix_village].remove(selected_customer)
-                            customer_db_update[fix_village].append(corrected_name.strip())
-                            
-                            # Save updated database
-                            save_customer_database(customer_db_update)
-                            
-                            st.success(f"✅ Customer name updated successfully!\n\nOld: {selected_customer}\nNew: {corrected_name.strip()}")
-                            st.balloons()
-                            
-                            # Reset form
-                            st.session_state['show_correction_form'] = False
-                            st.rerun()
-                        else:
-                            st.error("Customer not found in database!")
-                    else:
-                        st.error("Please enter a valid customer name!")
-            
-            with col_btn2:
-                # Cancel button
-                if st.button("❌ Cancel", use_container_width=True):
-                    st.session_state['show_correction_form'] = False
-                    st.rerun()
-    
-    # Pricing Update Section
-    st.markdown("---")
-    st.markdown("### 💰 Update Package Prices")
-    
-    # Create a button to show/hide the pricing form
-    if st.button("💵 Change Package Prices", use_container_width=True):
-        st.session_state['show_pricing_form'] = not st.session_state.get('show_pricing_form', False)
-    
-    # Show pricing form if button was clicked
-    if st.session_state.get('show_pricing_form', False):
-        st.markdown("#### Select Package and Update Price")
-        
-        # Load current pricing
-        current_prices = load_pricing_database()
-        
-        col_price1, col_price2 = st.columns(2)
-        
-        with col_price1:
-            # Package selection dropdown
-            selected_package = st.selectbox(
-                "Select Package",
-                options=list(current_prices.keys()),
-                key="price_package_select",
-                help="Choose the package size to update price"
-            )
-        
-        with col_price2:
-            # Show current price
-            current_price = current_prices[selected_package]
-            st.metric(
-                "Current Price",
-                f"₹{current_price}",
-                help="This is the current price for selected package"
-            )
-        
-        # Show input for new price
-        st.markdown("---")
-        new_price = st.number_input(
-            "Enter New Price (₹)",
-            min_value=1,
-            value=current_price,
-            step=1,
-            key="new_price_input",
-            help="Enter the new price for the selected package"
-        )
-        
-        col_price_btn1, col_price_btn2 = st.columns(2)
-        
-        with col_price_btn1:
-            # Save button
-            if st.button("💾 Save New Price", type="primary", use_container_width=True, key="save_price_btn"):
-                if new_price > 0:
-                    # Load pricing database
-                    pricing_db_update = load_pricing_database()
-                    
-                    # Update the price
-                    old_price = pricing_db_update[selected_package]
-                    pricing_db_update[selected_package] = new_price
-                    
-                    # Save updated pricing
-                    save_pricing_database(pricing_db_update)
-                    
-                    st.success(f"✅ Price updated successfully!\n\nPackage: {selected_package}\nOld Price: ₹{old_price}\nNew Price: ₹{new_price}")
-                    st.balloons()
-                    
-                    # Reset form
-                    st.session_state['show_pricing_form'] = False
-                    st.rerun()
-                else:
-                    st.error("Please enter a valid price (greater than 0)!")
-        
-        with col_price_btn2:
-            # Cancel button
-            if st.button("❌ Cancel", use_container_width=True, key="cancel_price_btn"):
-                st.session_state['show_pricing_form'] = False
-                st.rerun()
-    
-    # 
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        "<div style='text-align: center; color: gray;'>"
-        "GOLD Tea Powder Sales Management System | © 2025"
-        "</div>",
-        unsafe_allow_html=True
-    )
+    # Recent sales
+    st.markdown("### 🕐 Recent Sales")
+    if not filtered_df.empty:
+        display_df = filtered_df.tail(10).iloc[::-1]
+        display_cols = ['Date', 'Customer Name', 'Village', 'Tea Type', 'Packaging', 'Quantity', 'Total Amount', 'Payment Status']
+        available_cols = [col for col in display_cols if col in display_df.columns]
+        st.dataframe(display_df[available_cols], use_container_width=True, hide_index=True)
 
+def render_new_sale(spreadsheet):
+    """Render the new sale entry page"""
+    st.markdown("<div class='page-title'><h2>➕ New Sale Entry</h2></div>", unsafe_allow_html=True)
+    
+    # Load data
+    customers = load_customers_data(spreadsheet)
+    pricing = load_pricing_data(spreadsheet)
+    
+    with st.form("sale_form", clear_on_submit=True):
+        # Row 1: Date and Day
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_date = st.date_input("📅 Date", value=datetime.today())
+        with col2:
+            auto_day = get_day_from_date(selected_date)
+            selected_day = st.selectbox("📆 Day", options=DAYS_OF_WEEK, index=DAYS_OF_WEEK.index(auto_day))
+        
+        # Row 2: Village and Customer
+        col3, col4 = st.columns(2)
+        with col3:
+            auto_village = DAY_TO_VILLAGE.get(selected_day, VILLAGES[0])
+            village_index = VILLAGES.index(auto_village) if auto_village in VILLAGES else 0
+            village = st.selectbox("🏘️ Village", options=VILLAGES, index=village_index)
+        
+        with col4:
+            customer_list = customers.get(village, [])
+            customer_options = ["-- Select Customer --"] + customer_list + ["➕ Add New Customer"]
+            customer_selection = st.selectbox("👤 Customer", options=customer_options)
+        
+        # New customer input
+        new_customer_name = ""
+        if customer_selection == "➕ Add New Customer":
+            new_customer_name = st.text_input("Enter New Customer Name")
+        
+        # Row 3: Tea Type and Packaging
+        col5, col6 = st.columns(2)
+        with col5:
+            tea_type = st.selectbox("🍵 Tea Type", options=TEA_TYPES)
+        with col6:
+            packaging = st.selectbox("📦 Packaging", options=list(pricing.keys()))
+        
+        # Row 4: Quantity and Rate
+        col7, col8 = st.columns(2)
+        with col7:
+            quantity = st.number_input("🔢 Quantity", min_value=1, value=1, step=1)
+        with col8:
+            rate = pricing.get(packaging, 0)
+            st.number_input("💵 Rate (₹)", value=rate, disabled=True)
+        
+        # Total
+        total_amount = rate * quantity
+        st.markdown(f"### 💰 Total Amount: ₹{total_amount:,.0f}")
+        
+        # Payment
+        st.markdown("---")
+        st.markdown("### 💳 Payment Details")
+        col9, col10 = st.columns(2)
+        with col9:
+            payment_status = st.selectbox("Payment Status", options=PAYMENT_OPTIONS)
+        with col10:
+            amount_paid = 0.0
+            if payment_status == "Paid":
+                amount_paid = float(total_amount)
+            elif payment_status == "Half paid":
+                amount_paid = st.number_input("Amount Paid (₹)", min_value=0.0, max_value=float(total_amount), value=0.0, step=10.0)
+        
+        # Submit
+        submitted = st.form_submit_button("💾 Save Sale", use_container_width=True, type="primary")
+        
+        if submitted:
+            # Validate
+            final_customer = new_customer_name.strip() if customer_selection == "➕ Add New Customer" else customer_selection
+            
+            if final_customer in ["-- Select Customer --", ""] or not final_customer:
+                st.error("⚠️ Please select or enter a customer name!")
+            else:
+                # Add new customer if needed
+                if customer_selection == "➕ Add New Customer" and new_customer_name.strip():
+                    add_customer(spreadsheet, village, new_customer_name.strip())
+                
+                # Save sale
+                sale_data = {
+                    "Date": selected_date.strftime("%Y-%m-%d"),
+                    "Day": selected_day,
+                    "Village": village,
+                    "Customer Name": final_customer,
+                    "Brand": BRAND_NAME,
+                    "Tea Type": tea_type,
+                    "Packaging": packaging,
+                    "Rate": rate,
+                    "Quantity": quantity,
+                    "Total Amount": total_amount,
+                    "Payment Status": payment_status,
+                    "Amount Paid": amount_paid
+                }
+                
+                if save_sale(spreadsheet, sale_data):
+                    st.success("✅ Sale saved successfully!")
+                    st.balloons()
+                else:
+                    st.error("❌ Failed to save sale. Please try again.")
+
+def render_view_sales(spreadsheet):
+    """Render the view/edit/delete sales page"""
+    st.markdown("<div class='page-title'><h2>📋 View & Manage Sales</h2></div>", unsafe_allow_html=True)
+    
+    df = load_sales_data(spreadsheet)
+    
+    if df.empty:
+        st.info("No sales data available.")
+        return
+    
+    # Filters
+    st.markdown("### 🔍 Filters")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        date_filter = st.date_input("From Date", value=datetime.now().date() - timedelta(days=30))
+    with col2:
+        date_filter_end = st.date_input("To Date", value=datetime.now().date())
+    with col3:
+        village_filter = st.selectbox("Village", ["All"] + VILLAGES)
+    with col4:
+        payment_filter = st.selectbox("Payment Status", ["All"] + PAYMENT_OPTIONS)
+    
+    # Apply filters
+    filtered_df = df.copy()
+    
+    if 'Date' in filtered_df.columns:
+        filtered_df['Date'] = pd.to_datetime(filtered_df['Date'], errors='coerce')
+        filtered_df = filtered_df[
+            (filtered_df['Date'].dt.date >= date_filter) & 
+            (filtered_df['Date'].dt.date <= date_filter_end)
+        ]
+    
+    if village_filter != "All" and 'Village' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['Village'] == village_filter]
+    
+    if payment_filter != "All" and 'Payment Status' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['Payment Status'] == payment_filter]
+    
+    # Summary
+    st.markdown("---")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Records", len(filtered_df))
+    with col2:
+        total = filtered_df['Total Amount'].sum() if 'Total Amount' in filtered_df.columns else 0
+        st.metric("Total Amount", f"₹{total:,.0f}")
+    with col3:
+        pending = filtered_df[filtered_df['Payment Status'] != 'Paid']['Balance'].sum() if 'Balance' in filtered_df.columns else 0
+        st.metric("Pending", f"₹{pending:,.0f}")
+    
+    # Export button
+    st.markdown("---")
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if not filtered_df.empty:
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                filtered_df.to_excel(writer, index=False, sheet_name='Sales')
+            
+            st.download_button(
+                label="📥 Download Excel",
+                data=buffer.getvalue(),
+                file_name=f"sales_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+    
+    # Display data
+    st.markdown("### 📊 Sales Data")
+    
+    # Add edit/delete functionality
+    if not filtered_df.empty:
+        # Display with selection
+        display_cols = ['ID', 'Date', 'Customer Name', 'Village', 'Tea Type', 'Packaging', 
+                       'Quantity', 'Total Amount', 'Payment Status', 'Balance']
+        available_cols = [col for col in display_cols if col in filtered_df.columns]
+        
+        st.dataframe(filtered_df[available_cols].iloc[::-1], use_container_width=True, hide_index=True)
+        
+        # Edit/Delete section
+        st.markdown("---")
+        st.markdown("### ✏️ Edit / Delete Entry")
+        
+        if 'ID' in filtered_df.columns:
+            entry_ids = filtered_df['ID'].tolist()
+            selected_id = st.selectbox("Select Entry ID to Edit/Delete", options=entry_ids)
+            
+            if selected_id:
+                selected_row = filtered_df[filtered_df['ID'] == selected_id].iloc[0]
+                row_index = df[df['ID'] == selected_id].index[0]
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("✏️ Edit Entry", use_container_width=True):
+                        st.session_state['editing_id'] = selected_id
+                        st.session_state['editing_row'] = row_index
+                
+                with col2:
+                    if st.button("🗑️ Delete Entry", use_container_width=True, type="secondary"):
+                        if delete_sale(spreadsheet, row_index):
+                            st.success("✅ Entry deleted successfully!")
+                            st.rerun()
+                
+                # Edit form
+                if st.session_state.get('editing_id') == selected_id:
+                    st.markdown("#### Edit Entry")
+                    with st.form("edit_form"):
+                        pricing = load_pricing_data(spreadsheet)
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            edit_date = st.date_input("Date", value=pd.to_datetime(selected_row['Date']).date() if pd.notna(selected_row.get('Date')) else datetime.now().date())
+                            edit_village = st.selectbox("Village", VILLAGES, index=VILLAGES.index(selected_row['Village']) if selected_row.get('Village') in VILLAGES else 0)
+                            edit_tea = st.selectbox("Tea Type", TEA_TYPES, index=TEA_TYPES.index(selected_row['Tea Type']) if selected_row.get('Tea Type') in TEA_TYPES else 0)
+                            edit_quantity = st.number_input("Quantity", min_value=1, value=int(selected_row.get('Quantity', 1)))
+                        
+                        with col2:
+                            edit_customer = st.text_input("Customer Name", value=selected_row.get('Customer Name', ''))
+                            edit_packaging = st.selectbox("Packaging", list(pricing.keys()), index=list(pricing.keys()).index(selected_row['Packaging']) if selected_row.get('Packaging') in pricing else 0)
+                            edit_payment = st.selectbox("Payment Status", PAYMENT_OPTIONS, index=PAYMENT_OPTIONS.index(selected_row['Payment Status']) if selected_row.get('Payment Status') in PAYMENT_OPTIONS else 0)
+                            edit_paid = st.number_input("Amount Paid", min_value=0.0, value=float(selected_row.get('Amount Paid', 0)))
+                        
+                        edit_rate = pricing.get(edit_packaging, 0)
+                        edit_total = edit_rate * edit_quantity
+                        st.markdown(f"**Total Amount: ₹{edit_total:,.0f}**")
+                        
+                        if st.form_submit_button("💾 Save Changes", use_container_width=True, type="primary"):
+                            updated_data = {
+                                "Date": edit_date.strftime("%Y-%m-%d"),
+                                "Day": get_day_from_date(edit_date),
+                                "Village": edit_village,
+                                "Customer Name": edit_customer,
+                                "Brand": BRAND_NAME,
+                                "Tea Type": edit_tea,
+                                "Packaging": edit_packaging,
+                                "Rate": edit_rate,
+                                "Quantity": edit_quantity,
+                                "Total Amount": edit_total,
+                                "Payment Status": edit_payment,
+                                "Amount Paid": edit_paid
+                            }
+                            
+                            if update_sale(spreadsheet, row_index, updated_data):
+                                st.success("✅ Entry updated successfully!")
+                                del st.session_state['editing_id']
+                                del st.session_state['editing_row']
+                                st.rerun()
+
+def render_reports(spreadsheet):
+    """Render the reports page"""
+    st.markdown("<div class='page-title'><h2>📊 Reports & Analytics</h2></div>", unsafe_allow_html=True)
+    
+    df = load_sales_data(spreadsheet)
+    
+    if df.empty:
+        st.info("No data available for reports.")
+        return
+    
+    # Report type selection
+    report_type = st.selectbox("Select Report", [
+        "📅 Daily Summary",
+        "📆 Weekly Summary", 
+        "🗓️ Monthly Summary",
+        "👤 Customer-wise Report",
+        "🏘️ Village-wise Report",
+        "📦 Product-wise Report"
+    ])
+    
+    st.markdown("---")
+    
+    if 'Date' in df.columns:
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    
+    if report_type == "📅 Daily Summary":
+        st.markdown("### Daily Sales Summary")
+        if 'Date' in df.columns:
+            daily = df.groupby(df['Date'].dt.date).agg({
+                'Total Amount': 'sum',
+                'Quantity': 'sum',
+                'ID': 'count'
+            }).rename(columns={'ID': 'Orders'}).reset_index()
+            daily = daily.sort_values('Date', ascending=False)
+            st.dataframe(daily, use_container_width=True, hide_index=True)
+            
+            st.markdown("### 📈 Daily Trend")
+            st.line_chart(daily.set_index('Date')['Total Amount'])
+    
+    elif report_type == "📆 Weekly Summary":
+        st.markdown("### Weekly Sales Summary")
+        if 'Date' in df.columns:
+            df['Week'] = df['Date'].dt.isocalendar().week
+            df['Year'] = df['Date'].dt.year
+            weekly = df.groupby(['Year', 'Week']).agg({
+                'Total Amount': 'sum',
+                'Quantity': 'sum',
+                'ID': 'count'
+            }).rename(columns={'ID': 'Orders'}).reset_index()
+            st.dataframe(weekly, use_container_width=True, hide_index=True)
+    
+    elif report_type == "🗓️ Monthly Summary":
+        st.markdown("### Monthly Sales Summary")
+        if 'Date' in df.columns:
+            df['Month'] = df['Date'].dt.to_period('M').astype(str)
+            monthly = df.groupby('Month').agg({
+                'Total Amount': 'sum',
+                'Quantity': 'sum',
+                'ID': 'count'
+            }).rename(columns={'ID': 'Orders'}).reset_index()
+            st.dataframe(monthly, use_container_width=True, hide_index=True)
+            
+            st.markdown("### 📈 Monthly Trend")
+            st.bar_chart(monthly.set_index('Month')['Total Amount'])
+    
+    elif report_type == "👤 Customer-wise Report":
+        st.markdown("### Customer-wise Sales Summary")
+        if 'Customer Name' in df.columns:
+            customer_report = df.groupby('Customer Name').agg({
+                'Total Amount': 'sum',
+                'Quantity': 'sum',
+                'ID': 'count',
+                'Balance': 'sum'
+            }).rename(columns={'ID': 'Orders'}).reset_index()
+            customer_report = customer_report.sort_values('Total Amount', ascending=False)
+            st.dataframe(customer_report, use_container_width=True, hide_index=True)
+    
+    elif report_type == "🏘️ Village-wise Report":
+        st.markdown("### Village-wise Sales Summary")
+        if 'Village' in df.columns:
+            village_report = df.groupby('Village').agg({
+                'Total Amount': 'sum',
+                'Quantity': 'sum',
+                'ID': 'count',
+                'Balance': 'sum'
+            }).rename(columns={'ID': 'Orders'}).reset_index()
+            st.dataframe(village_report, use_container_width=True, hide_index=True)
+            
+            st.markdown("### 📊 Village Comparison")
+            st.bar_chart(village_report.set_index('Village')['Total Amount'])
+    
+    elif report_type == "📦 Product-wise Report":
+        st.markdown("### Product-wise Sales Summary")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### By Tea Type")
+            if 'Tea Type' in df.columns:
+                tea_report = df.groupby('Tea Type').agg({
+                    'Total Amount': 'sum',
+                    'Quantity': 'sum'
+                }).reset_index()
+                st.dataframe(tea_report, use_container_width=True, hide_index=True)
+        
+        with col2:
+            st.markdown("#### By Packaging")
+            if 'Packaging' in df.columns:
+                pack_report = df.groupby('Packaging').agg({
+                    'Total Amount': 'sum',
+                    'Quantity': 'sum'
+                }).reset_index()
+                st.dataframe(pack_report, use_container_width=True, hide_index=True)
+
+def render_pending_payments(spreadsheet):
+    """Render the pending payments page"""
+    st.markdown("<div class='page-title'><h2>💰 Pending Payments</h2></div>", unsafe_allow_html=True)
+    
+    df = load_sales_data(spreadsheet)
+    
+    if df.empty:
+        st.info("No sales data available.")
+        return
+    
+    # Filter unpaid/half-paid
+    pending_df = df[df['Payment Status'].isin(['Not paid', 'Half paid'])].copy() if 'Payment Status' in df.columns else pd.DataFrame()
+    
+    if pending_df.empty:
+        st.success("🎉 No pending payments! All dues are cleared.")
+        return
+    
+    # Summary cards
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        total_pending = pending_df['Balance'].sum() if 'Balance' in pending_df.columns else 0
+        st.markdown(f"""
+        <div class='warning-card'>
+            <h3>₹{total_pending:,.0f}</h3>
+            <p>Total Pending</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        not_paid = pending_df[pending_df['Payment Status'] == 'Not paid']['Balance'].sum() if 'Balance' in pending_df.columns else 0
+        st.markdown(f"""
+        <div class='metric-card'>
+            <h3>₹{not_paid:,.0f}</h3>
+            <p>Not Paid</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        half_paid = pending_df[pending_df['Payment Status'] == 'Half paid']['Balance'].sum() if 'Balance' in pending_df.columns else 0
+        st.markdown(f"""
+        <div class='info-card'>
+            <h3>₹{half_paid:,.0f}</h3>
+            <p>Half Paid</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Filter by village
+    village_filter = st.selectbox("Filter by Village", ["All"] + VILLAGES)
+    
+    if village_filter != "All":
+        pending_df = pending_df[pending_df['Village'] == village_filter]
+    
+    # Customer-wise pending
+    st.markdown("### 👤 Customer-wise Pending")
+    if 'Customer Name' in pending_df.columns and 'Balance' in pending_df.columns:
+        customer_pending = pending_df.groupby(['Village', 'Customer Name']).agg({
+            'Balance': 'sum',
+            'ID': 'count'
+        }).rename(columns={'ID': 'Entries'}).reset_index()
+        customer_pending = customer_pending.sort_values('Balance', ascending=False)
+        st.dataframe(customer_pending, use_container_width=True, hide_index=True)
+    
+    # Detailed list
+    st.markdown("---")
+    st.markdown("### 📋 Detailed Pending Entries")
+    display_cols = ['Date', 'Customer Name', 'Village', 'Total Amount', 'Amount Paid', 'Balance', 'Payment Status']
+    available_cols = [col for col in display_cols if col in pending_df.columns]
+    st.dataframe(pending_df[available_cols].iloc[::-1], use_container_width=True, hide_index=True)
+    
+    # Export
+    if not pending_df.empty:
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            pending_df.to_excel(writer, index=False, sheet_name='Pending')
+        
+        st.download_button(
+            label="📥 Download Pending Report",
+            data=buffer.getvalue(),
+            file_name=f"pending_payments_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+def render_settings(spreadsheet):
+    """Render the settings page"""
+    st.markdown("<div class='page-title'><h2>⚙️ Settings</h2></div>", unsafe_allow_html=True)
+    
+    tab1, tab2, tab3 = st.tabs(["💰 Pricing", "👥 Customers", "🏘️ Villages"])
+    
+    with tab1:
+        st.markdown("### Update Package Prices")
+        pricing = load_pricing_data(spreadsheet)
+        
+        for package, rate in pricing.items():
+            col1, col2, col3 = st.columns([2, 2, 1])
+            with col1:
+                st.text(f"📦 {package}")
+            with col2:
+                new_rate = st.number_input(f"Rate for {package}", value=rate, min_value=1, key=f"price_{package}", label_visibility="collapsed")
+            with col3:
+                if new_rate != rate:
+                    if st.button("💾", key=f"save_{package}"):
+                        if update_pricing(spreadsheet, package, new_rate):
+                            st.success(f"✅ {package} price updated!")
+                            st.rerun()
+    
+    with tab2:
+        st.markdown("### Manage Customers")
+        customers = load_customers_data(spreadsheet)
+        
+        # Add customer
+        st.markdown("#### ➕ Add New Customer")
+        col1, col2, col3 = st.columns([2, 2, 1])
+        with col1:
+            add_village = st.selectbox("Village", VILLAGES, key="add_cust_village")
+        with col2:
+            add_name = st.text_input("Customer Name", key="add_cust_name")
+        with col3:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("➕ Add", key="add_cust_btn"):
+                if add_name.strip():
+                    if add_customer(spreadsheet, add_village, add_name.strip()):
+                        st.success(f"✅ Customer added!")
+                        st.rerun()
+        
+        st.markdown("---")
+        
+        # View/Delete customers
+        st.markdown("#### 📋 View/Delete Customers")
+        view_village = st.selectbox("Select Village", VILLAGES, key="view_cust_village")
+        
+        village_customers = customers.get(view_village, [])
+        if village_customers:
+            for customer in village_customers:
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.text(f"👤 {customer}")
+                with col2:
+                    if st.button("🗑️", key=f"del_{view_village}_{customer}"):
+                        if delete_customer(spreadsheet, view_village, customer):
+                            st.success(f"✅ Deleted {customer}")
+                            st.rerun()
+        else:
+            st.info("No customers in this village.")
+    
+    with tab3:
+        st.markdown("### Village Information")
+        st.info("Villages are currently fixed. Contact developer to add new villages.")
+        
+        for village in VILLAGES:
+            day = [d for d, v in DAY_TO_VILLAGE.items() if v == village]
+            day_str = day[0] if day else "Not assigned"
+            st.markdown(f"**🏘️ {village}** - Assigned Day: {day_str}")
+
+# ============================================
+# MAIN APP
+# ============================================
+def main():
+    """Main application entry point"""
+    
+    # Check authentication
+    if not check_password():
+        return
+    
+    # Initialize Google Sheets
+    if 'spreadsheet' not in st.session_state:
+        st.session_state.spreadsheet = init_google_sheets()
+    
+    spreadsheet = st.session_state.spreadsheet
+    
+    # Show warning if not connected to Google Sheets
+    if spreadsheet is None:
+        st.warning("⚠️ Not connected to Google Sheets. Data will not be saved permanently.")
+    
+    # Render sidebar and get selected page
+    page = render_sidebar()
+    
+    # Render selected page
+    if page == "🏠 Dashboard":
+        render_dashboard(spreadsheet)
+    elif page == "➕ New Sale":
+        render_new_sale(spreadsheet)
+    elif page == "📋 View Sales":
+        render_view_sales(spreadsheet)
+    elif page == "📊 Reports":
+        render_reports(spreadsheet)
+    elif page == "💰 Pending Payments":
+        render_pending_payments(spreadsheet)
+    elif page == "⚙️ Settings":
+        render_settings(spreadsheet)
 
 if __name__ == "__main__":
     main()

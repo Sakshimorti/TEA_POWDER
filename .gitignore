@@ -1,0 +1,35 @@
+# Secrets - NEVER commit these
+.streamlit/secrets.toml
+secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local data files (optional - remove if you want to track them)
+# gold_tea_sales.xlsx
+
+# Logs
+*.log
+
+# Distribution
+dist/
+build/
+*.egg-info/
