@@ -239,8 +239,17 @@ def get_or_create_spreadsheet(client, spreadsheet_name="GOLD_Tea_Sales"):
         spreadsheet = client.open(spreadsheet_name)
     except gspread.SpreadsheetNotFound:
         spreadsheet = client.create(spreadsheet_name)
-        # Share with yourself (optional)
-        # spreadsheet.share('your-email@gmail.com', perm_type='user', role='writer')
+        # Share with user's email if provided in secrets
+        if "user_email" in st.secrets:
+            try:
+                spreadsheet.share(st.secrets["user_email"], perm_type='user', role='writer')
+            except Exception as e:
+                st.warning(f"Could not share sheet: {str(e)}")
+        # Make it accessible to anyone with link (optional - for easy access)
+        try:
+            spreadsheet.share('', perm_type='anyone', role='writer')
+        except Exception:
+            pass
     return spreadsheet
 
 def get_or_create_worksheet(spreadsheet, sheet_name, headers=None):
@@ -1212,6 +1221,18 @@ def render_settings(spreadsheet):
             day = [d for d, v in DAY_TO_VILLAGE.items() if v == village]
             day_str = day[0] if day else "Not assigned"
             st.markdown(f"**🏘️ {village}** - Assigned Day: {day_str}")
+        
+        # Google Sheet Link
+        st.markdown("---")
+        st.markdown("### 📊 Google Sheet Access")
+        if spreadsheet:
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
+            st.success("✅ Connected to Google Sheets")
+            st.markdown(f"**📎 Sheet Link:** [Open Google Sheet]({sheet_url})")
+            st.code(sheet_url, language=None)
+            st.caption("Click the link above to view/edit your data directly in Google Sheets")
+        else:
+            st.warning("⚠️ Not connected to Google Sheets")
 
 # ============================================
 # MAIN APP
