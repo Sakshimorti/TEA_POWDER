@@ -237,20 +237,29 @@ def get_or_create_spreadsheet(client, spreadsheet_name="GOLD_Tea_Sales"):
     """Get or create the main spreadsheet"""
     try:
         spreadsheet = client.open(spreadsheet_name)
+        return spreadsheet
     except gspread.SpreadsheetNotFound:
-        spreadsheet = client.create(spreadsheet_name)
-        # Share with user's email if provided in secrets
-        if "user_email" in st.secrets:
-            try:
-                spreadsheet.share(st.secrets["user_email"], perm_type='user', role='writer')
-            except Exception as e:
-                st.warning(f"Could not share sheet: {str(e)}")
-        # Make it accessible to anyone with link (optional - for easy access)
         try:
-            spreadsheet.share('', perm_type='anyone', role='writer')
-        except Exception:
-            pass
-    return spreadsheet
+            spreadsheet = client.create(spreadsheet_name)
+            # Share with user's email if provided in secrets
+            if "user_email" in st.secrets:
+                try:
+                    spreadsheet.share(st.secrets["user_email"], perm_type='user', role='writer')
+                except Exception as e:
+                    st.warning(f"Could not share sheet with email: {str(e)}")
+            # Make it accessible to anyone with link (optional - for easy access)
+            try:
+                spreadsheet.share('', perm_type='anyone', role='writer')
+            except Exception:
+                pass
+            return spreadsheet
+        except Exception as e:
+            st.error(f"❌ Error creating spreadsheet: {str(e)}")
+            st.info("💡 **Tip:** Make sure Google Drive API is enabled and wait 2-3 minutes after enabling.")
+            return None
+    except Exception as e:
+        st.error(f"❌ Error accessing spreadsheet: {str(e)}")
+        return None
 
 def get_or_create_worksheet(spreadsheet, sheet_name, headers=None):
     """Get or create a worksheet with headers"""
@@ -269,29 +278,35 @@ def init_google_sheets():
         return None
     
     spreadsheet = get_or_create_spreadsheet(client)
+    if spreadsheet is None:
+        return None
     
-    # Sales sheet headers
-    sales_headers = [
-        "ID", "Date", "Day", "Village", "Customer Name", "Brand", 
-        "Tea Type", "Packaging", "Rate", "Quantity", "Total Amount",
-        "Payment Status", "Amount Paid", "Balance", "Created At", "Updated At"
-    ]
-    get_or_create_worksheet(spreadsheet, SALES_SHEET, sales_headers)
-    
-    # Customers sheet headers
-    customers_headers = ["Village", "Customer Name", "Added On"]
-    get_or_create_worksheet(spreadsheet, CUSTOMERS_SHEET, customers_headers)
-    
-    # Pricing sheet headers
-    pricing_headers = ["Package", "Rate", "Updated On"]
-    pricing_ws = get_or_create_worksheet(spreadsheet, PRICING_SHEET, pricing_headers)
-    
-    # Initialize default pricing if empty
-    if len(pricing_ws.get_all_values()) <= 1:
-        for package, rate in DEFAULT_PRICING.items():
-            pricing_ws.append_row([package, rate, datetime.now().strftime("%Y-%m-%d %H:%M")])
-    
-    return spreadsheet
+    try:
+        # Sales sheet headers
+        sales_headers = [
+            "ID", "Date", "Day", "Village", "Customer Name", "Brand", 
+            "Tea Type", "Packaging", "Rate", "Quantity", "Total Amount",
+            "Payment Status", "Amount Paid", "Balance", "Created At", "Updated At"
+        ]
+        get_or_create_worksheet(spreadsheet, SALES_SHEET, sales_headers)
+        
+        # Customers sheet headers
+        customers_headers = ["Village", "Customer Name", "Added On"]
+        get_or_create_worksheet(spreadsheet, CUSTOMERS_SHEET, customers_headers)
+        
+        # Pricing sheet headers
+        pricing_headers = ["Package", "Rate", "Updated On"]
+        pricing_ws = get_or_create_worksheet(spreadsheet, PRICING_SHEET, pricing_headers)
+        
+        # Initialize default pricing if empty
+        if pricing_ws and len(pricing_ws.get_all_values()) <= 1:
+            for package, rate in DEFAULT_PRICING.items():
+                pricing_ws.append_row([package, rate, datetime.now().strftime("%Y-%m-%d %H:%M")])
+        
+        return spreadsheet
+    except Exception as e:
+        st.error(f"❌ Error initializing sheets: {str(e)}")
+        return None
 
 # ============================================
 # DATA FUNCTIONS
