@@ -530,6 +530,8 @@ def delete_sale(spreadsheet, row_index):
     """Delete a sale from Google Sheets"""
     if spreadsheet:
         try:
+            # Convert numpy int64 to Python int to avoid JSON serialization issues
+            row_index = int(row_index)
             worksheet = spreadsheet.worksheet(SALES_SHEET)
             worksheet.delete_rows(row_index + 2)  # +2 for header and 1-based index
             load_sales_data.clear()
