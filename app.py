@@ -577,6 +577,29 @@ def delete_customer(spreadsheet, village, customer_name):
                 st.error(f"Error deleting customer: {error_msg}")
     return False
 
+def edit_customer(spreadsheet, village, old_name, new_name):
+    """Edit a customer name in Google Sheets"""
+    if spreadsheet:
+        try:
+            worksheet = spreadsheet.worksheet(CUSTOMERS_SHEET)
+            data = worksheet.get_all_values()
+            for i, row in enumerate(data):
+                if len(row) >= 2 and row[0] == village and row[1] == old_name:
+                    worksheet.update_cell(i + 1, 2, new_name.strip())
+                    worksheet.update_cell(i + 1, 3, datetime.now().strftime("%Y-%m-%d %H:%M"))
+                    load_customers_data.clear()
+                    
+                    # Also update in local JSON file
+                    save_customer_to_json(village, new_name.strip())
+                    return True
+        except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg or "Quota exceeded" in error_msg:
+                st.error("⚠️ Google Sheets API quota exceeded. Please wait a minute and try again.")
+            else:
+                st.error(f"Error editing customer: {error_msg}")
+    return False
+
 def update_pricing(spreadsheet, package, new_rate):
     """Update pricing in Google Sheets"""
     if spreadsheet:
@@ -1286,21 +1309,43 @@ def render_settings(spreadsheet):
         
         st.markdown("---")
         
-        # View/Delete customers
-        st.markdown("#### 📋 View/Delete Customers")
+        # View/Edit/Delete customers
+        st.markdown("#### 📋 Manage Customers")
         view_village = st.selectbox("Select Village", VILLAGES, key="view_cust_village")
         
         village_customers = customers.get(view_village, [])
         if village_customers:
             for customer in village_customers:
-                col1, col2 = st.columns([4, 1])
+                col1, col2, col3 = st.columns([3, 1, 1])
                 with col1:
                     st.text(f"👤 {customer}")
                 with col2:
-                    if st.button("🗑️", key=f"del_{view_village}_{customer}"):
+                    if st.button("✏️", key=f"edit_{view_village}_{customer}", help="Edit customer name"):
+                        st.session_state[f'editing_{view_village}_{customer}'] = True
+                with col3:
+                    if st.button("🗑️", key=f"del_{view_village}_{customer}", help="Delete customer"):
                         if delete_customer(spreadsheet, view_village, customer):
                             st.success(f"✅ Deleted {customer}")
                             st.rerun()
+                
+                # Show edit form if editing
+                if st.session_state.get(f'editing_{view_village}_{customer}', False):
+                    with st.form(key=f"edit_form_{view_village}_{customer}"):
+                        new_name = st.text_input("New customer name", value=customer, key=f"new_name_{view_village}_{customer}")
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            if st.form_submit_button("💾 Save"):
+                                if new_name.strip() and new_name.strip() != customer:
+                                    if edit_customer(spreadsheet, view_village, customer, new_name.strip()):
+                                        st.success(f"✅ Updated to {new_name.strip()}")
+                                        st.session_state[f'editing_{view_village}_{customer}'] = False
+                                        st.rerun()
+                                else:
+                                    st.warning("⚠️ Please enter a different name")
+                        with col_b:
+                            if st.form_submit_button("❌ Cancel"):
+                                st.session_state[f'editing_{view_village}_{customer}'] = False
+                                st.rerun()
         else:
             st.info("No customers in this village.")
     
