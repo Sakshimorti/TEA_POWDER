@@ -831,23 +831,19 @@ def render_new_sale(spreadsheet):
         
         payment_status = st.selectbox("Payment Status", options=PAYMENT_OPTIONS)
         
-        # Amount paid input - always editable for Half paid
+        # Amount paid - only show input for Half paid
+        amount_paid = 0.0
         if payment_status == "Paid":
             amount_paid = float(total_amount)
-            st.text(f"Amount Paid: ₹{amount_paid:,.0f}")
         elif payment_status == "Half paid":
             amount_paid = st.number_input(
-                "Amount Paid (₹)", 
-                min_value=0.0, 
-                max_value=float(total_amount), 
-                value=0.0, 
-                step=10.0
+                "How much paid (₹)", 
+                min_value=0, 
+                max_value=int(total_amount), 
+                value=0, 
+                step=1
             )
-            balance = total_amount - amount_paid
-            st.info(f"💡 Balance Amount: ₹{balance:,.0f}")
-        else:  # Not paid
-            amount_paid = 0.0
-            st.text("Amount Paid: ₹0")
+        # Not paid - amount_paid stays 0.0
         
         # Submit
         submitted = st.form_submit_button("💾 Save Sale", use_container_width=True, type="primary")
