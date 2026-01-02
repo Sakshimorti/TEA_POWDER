@@ -559,23 +559,52 @@ def add_customer(spreadsheet, village, customer_name):
     return False
 
 def delete_customer(spreadsheet, village, customer_name):
-    """Delete a customer from Google Sheets"""
+    """Delete a customer from Google Sheets and local JSON"""
+    deleted = False
+    
+    # Delete from Google Sheets
     if spreadsheet:
         try:
             worksheet = spreadsheet.worksheet(CUSTOMERS_SHEET)
             data = worksheet.get_all_values()
+            # Strip whitespace for comparison
+            customer_name_clean = customer_name.strip()
+            
             for i, row in enumerate(data):
-                if len(row) >= 2 and row[0] == village and row[1] == customer_name:
+                if len(row) >= 2 and row[0].strip() == village and row[1].strip() == customer_name_clean:
                     worksheet.delete_rows(i + 1)
-                    load_customers_data.clear()
-                    return True
+                    deleted = True
+                    break
+            
+            if deleted:
+                load_customers_data.clear()
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg or "Quota exceeded" in error_msg:
                 st.error("⚠️ Google Sheets API quota exceeded. Please wait a minute and try again.")
             else:
-                st.error(f"Error deleting customer: {error_msg}")
-    return False
+                st.error(f"Error deleting customer from Google Sheets: {error_msg}")
+            return False
+    
+    # Also delete from local JSON file
+    json_path = os.path.join(os.path.dirname(__file__), 'customer_database.json')
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            customers = json.load(f)
+        
+        customer_name_clean = customer_name.strip()
+        if village in customers:
+            # Remove customer (case-insensitive and whitespace-trimmed comparison)
+            customers[village] = [c for c in customers[village] if c.strip() != customer_name_clean]
+            
+            # Save back to file
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(customers, f, indent=4, ensure_ascii=False)
+            deleted = True
+    except Exception as e:
+        st.warning(f"Could not update local customer database: {e}")
+    
+    return deleted
 
 def edit_customer(spreadsheet, village, old_name, new_name):
     """Edit a customer name in Google Sheets"""
