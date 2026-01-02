@@ -336,26 +336,27 @@ def load_sales_data(_spreadsheet=None):
 
 @st.cache_data(ttl=60)
 def load_customers_data(_spreadsheet=None):
-    """Load customers from Google Sheets or local"""
+    """Load customers from both customer_database.json and Google Sheets"""
+    # First, load from local JSON file
+    customers = load_default_customers()
+    
+    # Then merge with Google Sheets data if available
     if _spreadsheet:
         try:
             worksheet = _spreadsheet.worksheet(CUSTOMERS_SHEET)
             data = worksheet.get_all_records()
-            customers = {}
             for row in data:
                 village = row.get('Village', '')
-                customer = row.get('Customer Name', '')
+                customer = row.get('Customer Name', '').strip()
                 if village and customer:
                     if village not in customers:
                         customers[village] = []
                     if customer not in customers[village]:
                         customers[village].append(customer)
-            return customers
         except Exception as e:
-            st.error(f"Error loading customers: {str(e)}")
+            st.warning(f"Could not load from Google Sheets: {str(e)}")
     
-    # Return default customers
-    return load_default_customers()
+    return customers
 
 @st.cache_data(ttl=60)
 def load_pricing_data(_spreadsheet=None):
