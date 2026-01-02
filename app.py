@@ -376,39 +376,29 @@ def load_pricing_data(_spreadsheet=None):
     return DEFAULT_PRICING.copy()
 
 def load_default_customers():
-    """Load default customer list"""
+    """Load customer list from customer_database.json file"""
+    import os
+    
+    # Try to load from customer_database.json file
+    json_path = os.path.join(os.path.dirname(__file__), 'customer_database.json')
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            customers = json.load(f)
+            # Strip whitespace from customer names
+            for village in customers:
+                customers[village] = [name.strip() for name in customers[village]]
+            return customers
+    except FileNotFoundError:
+        st.warning("customer_database.json not found, using default customers")
+    except json.JSONDecodeError as e:
+        st.error(f"Error reading customer_database.json: {e}")
+    
+    # Fallback to hardcoded defaults if file not found
     return {
-        "vairgwadi": [
-            "RatanaBai Gaddiwadar", "Sadhana Patil", "Hausabai Murkute",
-            "Murari Patil", "Shivaji Sawant", "Prakash Patil", "Suresh Patil",
-            "Anjali Patil", "Chandrkant Sawant", "Tanaji Sutar", "Santosh Gourle",
-            "Sachin Kapase", "Anil Dhotare", "Vasant Patil"
-        ],
-        "Bardwadi": [
-            "Basappa Gholrake", "Geeta Gholrake", "Sanjay Gholrake", "Pushpa Gholrake",
-            "Shanakar Pujari", "Mahadev Naik", "Hirabai Gholrake", "Surekha Gholrake",
-            "Shanata Naik", "Balava Gholrake", "Anada Gholrake", "Kempanna Gholrake",
-            "Maruti Gholrake", "Sambhaji Gholrake", "Chandrkant Naik", "Renuka Arun Gholrake",
-            "Gaurabai Gholrake", "Vaishali Gholrake", "Akkatai naik", "Lata Naik",
-            "Savatri Bhoi", "Ratna Rangnavar", "Mahadev Bhoi", "Prashram Bhoi",
-            "Barama Bhoi", "Satyappa Bhoi", "Annappa Bhoi", "Pushpa M Bhoi",
-            "Driver Bhoi", "kori", "Kallappa Kaujalagi", "Suresh Kajualagi"
-        ],
-        "Harali KH": [
-            "Sagar Kumbhar", "Shankar Mali", "Shivaji Mali", "Ranjit Chavan",
-            "Surekha Bagadi", "Daynashwar Bagadi", "Pandit Gurav", "Gajana Patil",
-            "Janadharn Gurav", "Laxman Patil", "Filips Bardaskar", "Chandrkant Kumbhar",
-            "Tanji Aapu Kumbhar", "Sagar Banekar", "Datayatra Bandu Kumbhar",
-            "Aavubai Kumbhar", "Shivaji Kumbhar", "Chaya Kumbhar", "Gaurabai Kumbhar",
-            "Shivaji Kanade", "Siddhava Kanade", "Mayava Kanade", "Anjana Bagadi"
-        ],
-        "Harali BK": [
-            "Vinayak Khanapure", "Ravi Morti", "Vijay Kamble", "Dipak Kamble",
-            "Shanakar Kamble", "Sanjay Kamble", "Suresh Kori", "Pundalik Kamble",
-            "Parshram Kamble", "Suraj Kamble", "Bharati Khavare", "Narayan Bhalekar",
-            "Raju Chavan", "Kavita Kokitkar", "Hari Patake", "Vandana Lohar",
-            "Sandip Patil", "Sunil Khavare", "Vimal Khavare", "Aalka Khavare"
-        ]
+        "vairgwadi": [],
+        "Bardwadi": [],
+        "Harali KH": [],
+        "Harali BK": []
     }
 
 def save_sale(spreadsheet, sale_data):
