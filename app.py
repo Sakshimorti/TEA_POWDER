@@ -334,7 +334,7 @@ def load_sales_data(_spreadsheet=None):
         "Payment Status", "Amount Paid", "Balance", "Created At", "Updated At"
     ])
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)  # Cache for 5 minutes to reduce API calls
 def load_customers_data(_spreadsheet=None):
     """Load customers from both customer_database.json and Google Sheets"""
     # First, load from local JSON file
@@ -570,7 +570,11 @@ def delete_customer(spreadsheet, village, customer_name):
                     load_customers_data.clear()
                     return True
         except Exception as e:
-            st.error(f"Error deleting customer: {str(e)}")
+            error_msg = str(e)
+            if "429" in error_msg or "Quota exceeded" in error_msg:
+                st.error("⚠️ Google Sheets API quota exceeded. Please wait a minute and try again.")
+            else:
+                st.error(f"Error deleting customer: {error_msg}")
     return False
 
 def update_pricing(spreadsheet, package, new_rate):
