@@ -828,24 +828,26 @@ def render_new_sale(spreadsheet):
         # Payment
         st.markdown("---")
         st.markdown("### 💳 Payment Details")
-        col9, col10 = st.columns(2)
-        with col9:
-            payment_status = st.selectbox("Payment Status", options=PAYMENT_OPTIONS)
-        with col10:
-            # Always show amount paid input, but adjust based on payment status
-            if payment_status == "Paid":
-                amount_paid = float(total_amount)
-                st.number_input("Amount Paid (₹)", value=amount_paid, disabled=True, key="amount_paid_display")
-            elif payment_status == "Half paid":
-                amount_paid = st.number_input("Amount Paid (₹)", min_value=0.0, max_value=float(total_amount), value=0.0, step=10.0, key="amount_paid_input")
-            else:  # Not paid
-                amount_paid = 0.0
-                st.number_input("Amount Paid (₹)", value=0.0, disabled=True, key="amount_paid_notpaid")
         
-        # Show balance for half paid
-        if payment_status == "Half paid":
+        payment_status = st.selectbox("Payment Status", options=PAYMENT_OPTIONS)
+        
+        # Amount paid input - always editable for Half paid
+        if payment_status == "Paid":
+            amount_paid = float(total_amount)
+            st.text(f"Amount Paid: ₹{amount_paid:,.0f}")
+        elif payment_status == "Half paid":
+            amount_paid = st.number_input(
+                "Amount Paid (₹)", 
+                min_value=0.0, 
+                max_value=float(total_amount), 
+                value=0.0, 
+                step=10.0
+            )
             balance = total_amount - amount_paid
             st.info(f"💡 Balance Amount: ₹{balance:,.0f}")
+        else:  # Not paid
+            amount_paid = 0.0
+            st.text("Amount Paid: ₹0")
         
         # Submit
         submitted = st.form_submit_button("💾 Save Sale", use_container_width=True, type="primary")
