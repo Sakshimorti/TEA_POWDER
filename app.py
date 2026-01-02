@@ -8,8 +8,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 import json
 import io
+import os
 import gspread
 from google.oauth2.service_account import Credentials
+from streamlit_searchbox import st_searchbox
 
 # ============================================
 # PAGE CONFIGURATION
@@ -377,8 +379,6 @@ def load_pricing_data(_spreadsheet=None):
 
 def load_default_customers():
     """Load customer list from customer_database.json file"""
-    import os
-    
     # Try to load from customer_database.json file
     json_path = os.path.join(os.path.dirname(__file__), 'customer_database.json')
     try:
@@ -400,6 +400,48 @@ def load_default_customers():
         "Harali KH": [],
         "Harali BK": []
     }
+
+def save_customer_to_json(village, customer_name):
+    """Save a new customer to customer_database.json file"""
+    json_path = os.path.join(os.path.dirname(__file__), 'customer_database.json')
+    try:
+        # Load existing data
+        with open(json_path, 'r', encoding='utf-8') as f:
+            customers = json.load(f)
+        
+        # Add new customer if not exists
+        customer_name = customer_name.strip()
+        if village not in customers:
+            customers[village] = []
+        
+        if customer_name and customer_name not in [c.strip() for c in customers[village]]:
+            customers[village].append(customer_name)
+            
+            # Save back to file
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(customers, f, indent=4, ensure_ascii=False)
+            return True
+    except Exception as e:
+        st.error(f"Error saving customer to JSON: {e}")
+    return False
+
+def search_customers(search_term, village, customers):
+    """Search function for customer autocomplete"""
+    if not search_term or len(search_term) < 2:
+        # Return all customers for the village when less than 2 characters
+        customer_list = customers.get(village, [])
+        return customer_list[:10]  # Limit to 10 suggestions
+    
+    # Filter customers based on search term
+    customer_list = customers.get(village, [])
+    search_lower = search_term.lower()
+    matches = [c for c in customer_list if search_lower in c.lower()]
+    
+    # If no matches found, include the typed text as an option to add new customer
+    if not matches:
+        return [f"➕ Add: {search_term}"]
+    
+    return matches[:10]  # Limit to 10 suggestions
 
 def save_sale(spreadsheet, sale_data):
     """Save a new sale to Google Sheets"""
@@ -715,32 +757,54 @@ def render_new_sale(spreadsheet):
     customers = load_customers_data(spreadsheet)
     pricing = load_pricing_data(spreadsheet)
     
+    # Initialize session state for village
+    if 'selected_village' not in st.session_state:
+        st.session_state.selected_village = VILLAGES[0]
+    
+    # Row 1: Date and Day (outside form for better interaction)
+    col1, col2 = st.columns(2)
+    with col1:
+        selected_date = st.date_input("📅 Date", value=datetime.today(), key="sale_date")
+    with col2:
+        auto_day = get_day_from_date(selected_date)
+        selected_day = st.selectbox("📆 Day", options=DAYS_OF_WEEK, index=DAYS_OF_WEEK.index(auto_day), key="sale_day")
+    
+    # Row 2: Village and Customer
+    col3, col4 = st.columns(2)
+    with col3:
+        auto_village = DAY_TO_VILLAGE.get(selected_day, VILLAGES[0])
+        village_index = VILLAGES.index(auto_village) if auto_village in VILLAGES else 0
+        village = st.selectbox("🏘️ Village", options=VILLAGES, index=village_index, key="sale_village")
+        st.session_state.selected_village = village
+    
+    with col4:
+        # Customer searchbox with autocomplete
+        customer_list = customers.get(village, [])
+        
+        def search_customer(search_term):
+            """Search function for customer autocomplete"""
+            if not search_term:
+                return customer_list[:15]  # Show first 15 customers
+            
+            search_lower = search_term.lower().strip()
+            matches = [c for c in customer_list if search_lower in c.lower()]
+            
+            # Always add option to create new customer with typed name
+            if search_term.strip() and search_term.strip() not in customer_list:
+                matches.append(f"➕ Add New: {search_term.strip()}")
+            
+            return matches[:15] if matches else [f"➕ Add New: {search_term.strip()}"]
+        
+        selected_customer = st_searchbox(
+            search_customer,
+            key=f"customer_search_{village}",
+            placeholder="Type customer name (min 2 letters)...",
+            label="👤 Customer Name",
+            clear_on_submit=False,
+            default=None
+        )
+    
     with st.form("sale_form", clear_on_submit=True):
-        # Row 1: Date and Day
-        col1, col2 = st.columns(2)
-        with col1:
-            selected_date = st.date_input("📅 Date", value=datetime.today())
-        with col2:
-            auto_day = get_day_from_date(selected_date)
-            selected_day = st.selectbox("📆 Day", options=DAYS_OF_WEEK, index=DAYS_OF_WEEK.index(auto_day))
-        
-        # Row 2: Village and Customer
-        col3, col4 = st.columns(2)
-        with col3:
-            auto_village = DAY_TO_VILLAGE.get(selected_day, VILLAGES[0])
-            village_index = VILLAGES.index(auto_village) if auto_village in VILLAGES else 0
-            village = st.selectbox("🏘️ Village", options=VILLAGES, index=village_index)
-        
-        with col4:
-            customer_list = customers.get(village, [])
-            customer_options = ["-- Select Customer --"] + customer_list + ["➕ Add New Customer"]
-            customer_selection = st.selectbox("👤 Customer", options=customer_options)
-        
-        # New customer input
-        new_customer_name = ""
-        if customer_selection == "➕ Add New Customer":
-            new_customer_name = st.text_input("Enter New Customer Name")
-        
         # Row 3: Tea Type and Packaging
         col5, col6 = st.columns(2)
         with col5:
@@ -777,15 +841,28 @@ def render_new_sale(spreadsheet):
         submitted = st.form_submit_button("💾 Save Sale", use_container_width=True, type="primary")
         
         if submitted:
-            # Validate
-            final_customer = new_customer_name.strip() if customer_selection == "➕ Add New Customer" else customer_selection
+            # Process customer selection from searchbox
+            final_customer = ""
+            is_new_customer = False
             
-            if final_customer in ["-- Select Customer --", ""] or not final_customer:
+            if selected_customer:
+                if selected_customer.startswith("➕ Add New: "):
+                    # Extract new customer name
+                    final_customer = selected_customer.replace("➕ Add New: ", "").strip()
+                    is_new_customer = True
+                else:
+                    final_customer = selected_customer.strip()
+            
+            if not final_customer:
                 st.error("⚠️ Please select or enter a customer name!")
             else:
                 # Add new customer if needed
-                if customer_selection == "➕ Add New Customer" and new_customer_name.strip():
-                    add_customer(spreadsheet, village, new_customer_name.strip())
+                if is_new_customer and final_customer:
+                    # Save to Google Sheets
+                    add_customer(spreadsheet, village, final_customer)
+                    # Also save to local JSON file
+                    save_customer_to_json(village, final_customer)
+                    load_customers_data.clear()  # Clear cache to reload customers
                 
                 # Save sale
                 sale_data = {
@@ -804,7 +881,9 @@ def render_new_sale(spreadsheet):
                 }
                 
                 if save_sale(spreadsheet, sale_data):
-                    st.success("✅ Sale saved successfully!")
+                    st.success(f"✅ Sale saved successfully for {final_customer}!")
+                    if is_new_customer:
+                        st.info(f"📝 New customer '{final_customer}' added to {village}")
                     st.balloons()
                 else:
                     st.error("❌ Failed to save sale. Please try again.")
