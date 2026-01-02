@@ -805,6 +805,22 @@ def render_new_sale(spreadsheet):
             default=None
         )
     
+    # Payment Status - OUTSIDE form so conditional input appears immediately
+    st.markdown("---")
+    st.markdown("### 💳 Payment Details")
+    payment_status = st.selectbox("Payment Status", options=PAYMENT_OPTIONS, key="payment_status_select")
+    
+    # Amount paid input for Half paid
+    amount_paid_input = 0
+    if payment_status == "Half paid":
+        amount_paid_input = st.number_input(
+            "How much paid (₹)", 
+            min_value=0, 
+            value=0, 
+            step=10,
+            key="half_paid_amount"
+        )
+    
     with st.form("sale_form", clear_on_submit=True):
         # Row 3: Tea Type and Packaging
         col5, col6 = st.columns(2)
@@ -825,30 +841,17 @@ def render_new_sale(spreadsheet):
         total_amount = rate * quantity
         st.markdown(f"### 💰 Total Amount: ₹{total_amount:,.0f}")
         
-        # Payment
-        st.markdown("---")
-        st.markdown("### 💳 Payment Details")
-        
-        payment_status = st.selectbox("Payment Status", options=PAYMENT_OPTIONS)
-        
-        # Amount paid - only show input for Half paid
-        amount_paid = 0.0
-        if payment_status == "Paid":
-            amount_paid = float(total_amount)
-        elif payment_status == "Half paid":
-            amount_paid = st.number_input(
-                "How much paid (₹)", 
-                min_value=0, 
-                max_value=int(total_amount), 
-                value=0, 
-                step=1
-            )
-        # Not paid - amount_paid stays 0.0
-        
         # Submit
         submitted = st.form_submit_button("💾 Save Sale", use_container_width=True, type="primary")
         
         if submitted:
+            # Calculate amount paid based on payment status
+            if payment_status == "Paid":
+                amount_paid = float(total_amount)
+            elif payment_status == "Half paid":
+                amount_paid = float(amount_paid_input)
+            else:  # Not paid
+                amount_paid = 0.0
             # Process customer selection from searchbox
             final_customer = selected_customer.strip() if selected_customer else ""
             
