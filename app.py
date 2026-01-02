@@ -823,21 +823,21 @@ def render_new_sale(spreadsheet):
             key="half_paid_amount"
         )
     
+    # Tea Type and Packaging - OUTSIDE form so rate updates immediately
+    st.markdown("---")
+    col5, col6 = st.columns(2)
+    with col5:
+        tea_type = st.selectbox("🍵 Tea Type", options=TEA_TYPES, key="tea_type_select")
+    with col6:
+        packaging = st.selectbox("📦 Packaging", options=list(pricing.keys()), key="packaging_select")
+    
+    # Display Rate and Total
+    rate = pricing.get(packaging, 0)
+    st.info(f"💵 Rate: ₹{rate} per {packaging}")
+    
     with st.form("sale_form", clear_on_submit=True):
-        # Row 3: Tea Type and Packaging
-        col5, col6 = st.columns(2)
-        with col5:
-            tea_type = st.selectbox("🍵 Tea Type", options=TEA_TYPES)
-        with col6:
-            packaging = st.selectbox("📦 Packaging", options=list(pricing.keys()))
-        
-        # Row 4: Quantity and Rate
-        col7, col8 = st.columns(2)
-        with col7:
-            quantity = st.number_input("🔢 Quantity", min_value=1, value=1, step=1)
-        with col8:
-            rate = pricing.get(packaging, 0)
-            st.number_input("💵 Rate (₹)", value=rate, disabled=True)
+        # Quantity
+        quantity = st.number_input("🔢 Quantity", min_value=1, value=1, step=1)
         
         # Total
         total_amount = rate * quantity
