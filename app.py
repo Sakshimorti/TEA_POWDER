@@ -789,16 +789,16 @@ def render_new_sale(spreadsheet):
             search_lower = search_term.lower().strip()
             matches = [c for c in customer_list if search_lower in c.lower()]
             
-            # Always add option to create new customer with typed name
-            if search_term.strip() and search_term.strip() not in customer_list:
-                matches.append(f"➕ Add New: {search_term.strip()}")
+            # If typed name not in list, include it as an option (will be saved automatically)
+            if search_term.strip() and search_term.strip() not in [c.strip() for c in customer_list]:
+                matches.insert(0, search_term.strip())  # Add typed name at top
             
-            return matches[:15] if matches else [f"➕ Add New: {search_term.strip()}"]
+            return matches[:15] if matches else [search_term.strip()]
         
         selected_customer = st_searchbox(
             search_customer,
             key=f"customer_search_{village}",
-            placeholder="Type customer name (min 2 letters)...",
+            placeholder="Type customer name...",
             label="👤 Customer Name",
             clear_on_submit=False,
             default=None
@@ -842,22 +842,14 @@ def render_new_sale(spreadsheet):
         
         if submitted:
             # Process customer selection from searchbox
-            final_customer = ""
-            is_new_customer = False
-            
-            if selected_customer:
-                if selected_customer.startswith("➕ Add New: "):
-                    # Extract new customer name
-                    final_customer = selected_customer.replace("➕ Add New: ", "").strip()
-                    is_new_customer = True
-                else:
-                    final_customer = selected_customer.strip()
+            final_customer = selected_customer.strip() if selected_customer else ""
             
             if not final_customer:
-                st.error("⚠️ Please select or enter a customer name!")
+                st.error("⚠️ Please enter a customer name!")
             else:
-                # Add new customer if needed
-                if is_new_customer and final_customer:
+                # Check if this is a new customer and save automatically
+                customer_list = customers.get(village, [])
+                if final_customer not in [c.strip() for c in customer_list]:
                     # Save to Google Sheets
                     add_customer(spreadsheet, village, final_customer)
                     # Also save to local JSON file
@@ -882,8 +874,6 @@ def render_new_sale(spreadsheet):
                 
                 if save_sale(spreadsheet, sale_data):
                     st.success(f"✅ Sale saved successfully for {final_customer}!")
-                    if is_new_customer:
-                        st.info(f"📝 New customer '{final_customer}' added to {village}")
                     st.balloons()
                 else:
                     st.error("❌ Failed to save sale. Please try again.")
