@@ -9,9 +9,12 @@ from datetime import datetime, timedelta
 import json
 import io
 import os
-import gspread
-from google.oauth2.service_account import Credentials
 from streamlit_searchbox import st_searchbox
+from db_mongodb import get_mongodb_client
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # ============================================
 # PAGE CONFIGURATION
@@ -46,17 +49,7 @@ DEFAULT_PRICING = {
     "1kg": 350
 }
 
-# Google Sheets Configuration
-SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
-]
-
-# Sheet names
-SALES_SHEET = "Sales"
-CUSTOMERS_SHEET = "Customers"
-PRICING_SHEET = "Pricing"
-SETTINGS_SHEET = "Settings"
+# MongoDB will be initialized via db_mongodb module
 
 # ============================================
 # CUSTOM CSS FOR BETTER UI
@@ -163,7 +156,8 @@ def check_password():
     
     def password_entered():
         """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == st.secrets.get("app_password", "gold123"):
+        app_password = os.getenv("APP_PASSWORD", "gold123")
+        if st.session_state["password"] == app_password:
             st.session_state["password_correct"] = True
             del st.session_state["password"]
         else:
@@ -214,116 +208,63 @@ def check_password():
     return True
 
 # ============================================
-# GOOGLE SHEETS FUNCTIONS
+# MONGODB INITIALIZATION
 # ============================================
-@st.cache_resource
-def get_google_sheets_connection():
-    """Create a connection to Google Sheets"""
+def init_mongodb():
+    """Initialize MongoDB connection and default data"""
     try:
-        # Try to get credentials from Streamlit secrets
-        if "gcp_service_account" in st.secrets:
-            creds = Credentials.from_service_account_info(
-                st.secrets["gcp_service_account"],
-                scopes=SCOPES
-            )
-            client = gspread.authorize(creds)
-            return client
-        else:
-            st.warning("⚠️ Google Sheets not configured. Using local storage.")
+        db_manager = get_mongodb_client()
+        
+        # Test connection
+        if not db_manager.test_connection():
+            st.error("❌ Failed to connect to MongoDB")
             return None
+        
+        # Initialize default pricing if not exists
+        db_manager.initialize_default_pricing(DEFAULT_PRICING)
+        
+        return db_manager
     except Exception as e:
-        st.warning(f"⚠️ Could not connect to Google Sheets: {str(e)}")
-        return None
-
-def get_or_create_spreadsheet(client, spreadsheet_name="GOLD_Tea_Sales"):
-    """Get or create the main spreadsheet"""
-    try:
-        spreadsheet = client.open(spreadsheet_name)
-        return spreadsheet
-    except gspread.SpreadsheetNotFound:
-        try:
-            spreadsheet = client.create(spreadsheet_name)
-            # Share with user's email if provided in secrets
-            if "user_email" in st.secrets:
-                try:
-                    spreadsheet.share(st.secrets["user_email"], perm_type='user', role='writer')
-                except Exception as e:
-                    st.warning(f"Could not share sheet with email: {str(e)}")
-            # Make it accessible to anyone with link (optional - for easy access)
-            try:
-                spreadsheet.share('', perm_type='anyone', role='writer')
-            except Exception:
-                pass
-            return spreadsheet
-        except Exception as e:
-            st.error(f"❌ Error creating spreadsheet: {str(e)}")
-            st.info("💡 **Tip:** Make sure Google Drive API is enabled and wait 2-3 minutes after enabling.")
-            return None
-    except Exception as e:
-        st.error(f"❌ Error accessing spreadsheet: {str(e)}")
-        return None
-
-def get_or_create_worksheet(spreadsheet, sheet_name, headers=None):
-    """Get or create a worksheet with headers"""
-    try:
-        worksheet = spreadsheet.worksheet(sheet_name)
-    except gspread.WorksheetNotFound:
-        worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=20)
-        if headers:
-            worksheet.append_row(headers)
-    return worksheet
-
-def init_google_sheets():
-    """Initialize all Google Sheets worksheets"""
-    client = get_google_sheets_connection()
-    if client is None:
-        return None
-    
-    spreadsheet = get_or_create_spreadsheet(client)
-    if spreadsheet is None:
-        return None
-    
-    try:
-        # Sales sheet headers
-        sales_headers = [
-            "ID", "Date", "Day", "Village", "Customer Name", "Brand", 
-            "Tea Type", "Packaging", "Rate", "Quantity", "Total Amount",
-            "Payment Status", "Amount Paid", "Balance", "Created At", "Updated At"
-        ]
-        get_or_create_worksheet(spreadsheet, SALES_SHEET, sales_headers)
-        
-        # Customers sheet headers
-        customers_headers = ["Village", "Customer Name", "Added On"]
-        get_or_create_worksheet(spreadsheet, CUSTOMERS_SHEET, customers_headers)
-        
-        # Pricing sheet headers
-        pricing_headers = ["Package", "Rate", "Updated On"]
-        pricing_ws = get_or_create_worksheet(spreadsheet, PRICING_SHEET, pricing_headers)
-        
-        # Initialize default pricing if empty
-        if pricing_ws and len(pricing_ws.get_all_values()) <= 1:
-            for package, rate in DEFAULT_PRICING.items():
-                pricing_ws.append_row([package, rate, datetime.now().strftime("%Y-%m-%d %H:%M")])
-        
-        return spreadsheet
-    except Exception as e:
-        st.error(f"❌ Error initializing sheets: {str(e)}")
+        st.error(f"❌ MongoDB initialization error: {str(e)}")
         return None
 
 # ============================================
 # DATA FUNCTIONS
 # ============================================
 @st.cache_data(ttl=30)
-def load_sales_data(_spreadsheet=None):
-    """Load all sales data from Google Sheets or local"""
-    if _spreadsheet:
+def load_sales_data(_db_manager=None):
+    """Load all sales data from MongoDB"""
+    if _db_manager:
         try:
-            worksheet = _spreadsheet.worksheet(SALES_SHEET)
-            data = worksheet.get_all_records()
-            if data:
-                df = pd.DataFrame(data)
-                if 'Date' in df.columns:
-                    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+            sales = _db_manager.get_all_sales()
+            if sales:
+                # Convert MongoDB documents to DataFrame
+                df = pd.DataFrame(sales)
+                
+                # Convert date strings to datetime
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+                
+                # Rename columns to match old format (capitalize first letter)
+                column_mapping = {
+                    'sale_id': 'ID',
+                    'date': 'Date',
+                    'day': 'Day',
+                    'village': 'Village',
+                    'customer_name': 'Customer Name',
+                    'brand': 'Brand',
+                    'tea_type': 'Tea Type',
+                    'packaging': 'Packaging',
+                    'rate': 'Rate',
+                    'quantity': 'Quantity',
+                    'total_amount': 'Total Amount',
+                    'payment_status': 'Payment Status',
+                    'amount_paid': 'Amount Paid',
+                    'balance': 'Balance',
+                    'created_at': 'Created At',
+                    'updated_at': 'Updated At'
+                }
+                df = df.rename(columns=column_mapping)
                 return df
         except Exception as e:
             st.error(f"Error loading sales: {str(e)}")
@@ -335,42 +276,32 @@ def load_sales_data(_spreadsheet=None):
     ])
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes to reduce API calls
-def load_customers_data(_spreadsheet=None):
-    """Load customers from both customer_database.json and Google Sheets"""
+def load_customers_data(_db_manager=None):
+    """Load customers from MongoDB and local JSON file"""
     # First, load from local JSON file
     customers = load_default_customers()
     
-    # Then merge with Google Sheets data if available
-    if _spreadsheet:
+    # Then merge with MongoDB data if available
+    if _db_manager:
         try:
-            worksheet = _spreadsheet.worksheet(CUSTOMERS_SHEET)
-            data = worksheet.get_all_records()
-            for row in data:
-                village = row.get('Village', '')
-                customer = row.get('Customer Name', '').strip()
-                if village and customer:
-                    if village not in customers:
-                        customers[village] = []
+            mongo_customers = _db_manager.get_all_customers()
+            for village, customer_list in mongo_customers.items():
+                if village not in customers:
+                    customers[village] = []
+                for customer in customer_list:
                     if customer not in customers[village]:
                         customers[village].append(customer)
         except Exception as e:
-            st.warning(f"Could not load from Google Sheets: {str(e)}")
+            st.warning(f"Could not load from MongoDB: {str(e)}")
     
     return customers
 
 @st.cache_data(ttl=60)
-def load_pricing_data(_spreadsheet=None):
-    """Load pricing from Google Sheets or local"""
-    if _spreadsheet:
+def load_pricing_data(_db_manager=None):
+    """Load pricing from MongoDB"""
+    if _db_manager:
         try:
-            worksheet = _spreadsheet.worksheet(PRICING_SHEET)
-            data = worksheet.get_all_records()
-            pricing = {}
-            for row in data:
-                package = row.get('Package', '')
-                rate = row.get('Rate', 0)
-                if package:
-                    pricing[package] = int(rate)
+            pricing = _db_manager.get_all_pricing()
             if pricing:
                 return pricing
         except Exception as e:
@@ -444,146 +375,103 @@ def search_customers(search_term, village, customers):
     
     return matches[:10]  # Limit to 10 suggestions
 
-def save_sale(spreadsheet, sale_data):
-    """Save a new sale to Google Sheets"""
-    if spreadsheet:
+def save_sale(db_manager, sale_data):
+    """Save a new sale to MongoDB"""
+    if db_manager:
         try:
-            worksheet = spreadsheet.worksheet(SALES_SHEET)
+            # Convert keys to lowercase with underscores for MongoDB
+            mongo_data = {
+                'date': sale_data.get('Date'),
+                'day': sale_data.get('Day'),
+                'village': sale_data.get('Village'),
+                'customer_name': sale_data.get('Customer Name'),
+                'brand': sale_data.get('Brand'),
+                'tea_type': sale_data.get('Tea Type'),
+                'packaging': sale_data.get('Packaging'),
+                'rate': sale_data.get('Rate'),
+                'quantity': sale_data.get('Quantity'),
+                'total_amount': sale_data.get('Total Amount'),
+                'payment_status': sale_data.get('Payment Status'),
+                'amount_paid': sale_data.get('Amount Paid')
+            }
             
-            # Generate unique ID
-            all_data = worksheet.get_all_values()
-            new_id = len(all_data)
-            
-            # Calculate balance
-            total = sale_data['Total Amount']
-            paid = sale_data['Amount Paid']
-            balance = total - paid if sale_data['Payment Status'] != 'Paid' else 0
-            
-            row = [
-                new_id,
-                sale_data['Date'],
-                sale_data['Day'],
-                sale_data['Village'],
-                sale_data['Customer Name'],
-                sale_data['Brand'],
-                sale_data['Tea Type'],
-                sale_data['Packaging'],
-                sale_data['Rate'],
-                sale_data['Quantity'],
-                sale_data['Total Amount'],
-                sale_data['Payment Status'],
-                sale_data['Amount Paid'],
-                balance,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            ]
-            worksheet.append_row(row)
-            
-            # Clear cache to refresh data
-            load_sales_data.clear()
-            return True
+            success = db_manager.add_sale(mongo_data)
+            if success:
+                # Clear cache to refresh data
+                load_sales_data.clear()
+            return success
         except Exception as e:
             st.error(f"Error saving sale: {str(e)}")
             return False
     return False
 
-def update_sale(spreadsheet, row_index, updated_data):
-    """Update an existing sale"""
-    if spreadsheet:
+def update_sale(db_manager, sale_id, updated_data):
+    """Update an existing sale record"""
+    if db_manager:
         try:
-            worksheet = spreadsheet.worksheet(SALES_SHEET)
+            # Convert keys to lowercase with underscores for MongoDB
+            mongo_data = {
+                'date': updated_data.get('Date'),
+                'day': updated_data.get('Day'),
+                'village': updated_data.get('Village'),
+                'customer_name': updated_data.get('Customer Name'),
+                'brand': updated_data.get('Brand'),
+                'tea_type': updated_data.get('Tea Type'),
+                'packaging': updated_data.get('Packaging'),
+                'rate': updated_data.get('Rate'),
+                'quantity': updated_data.get('Quantity'),
+                'total_amount': updated_data.get('Total Amount'),
+                'payment_status': updated_data.get('Payment Status'),
+                'amount_paid': updated_data.get('Amount Paid')
+            }
             
-            # Calculate balance
-            total = updated_data['Total Amount']
-            paid = updated_data['Amount Paid']
-            balance = total - paid if updated_data['Payment Status'] != 'Paid' else 0
-            
-            # Update the row (row_index + 2 because of header and 1-based index)
-            cell_range = f'B{row_index + 2}:P{row_index + 2}'
-            values = [[
-                updated_data['Date'],
-                updated_data['Day'],
-                updated_data['Village'],
-                updated_data['Customer Name'],
-                updated_data['Brand'],
-                updated_data['Tea Type'],
-                updated_data['Packaging'],
-                updated_data['Rate'],
-                updated_data['Quantity'],
-                updated_data['Total Amount'],
-                updated_data['Payment Status'],
-                updated_data['Amount Paid'],
-                balance,
-                worksheet.cell(row_index + 2, 15).value,  # Keep original Created At
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            ]]
-            worksheet.update(cell_range, values)
-            
-            load_sales_data.clear()
-            return True
+            success = db_manager.update_sale(sale_id, mongo_data)
+            if success:
+                load_sales_data.clear()
+            return success
         except Exception as e:
             st.error(f"Error updating sale: {str(e)}")
             return False
     return False
 
-def delete_sale(spreadsheet, row_index):
-    """Delete a sale from Google Sheets"""
-    if spreadsheet:
+def delete_sale(db_manager, sale_id):
+    """Delete a sale record from MongoDB"""
+    if db_manager:
         try:
-            # Convert numpy int64 to Python int to avoid JSON serialization issues
-            row_index = int(row_index)
-            worksheet = spreadsheet.worksheet(SALES_SHEET)
-            worksheet.delete_rows(row_index + 2)  # +2 for header and 1-based index
-            load_sales_data.clear()
-            return True
+            success = db_manager.delete_sale(sale_id)
+            if success:
+                load_sales_data.clear()
+            return success
         except Exception as e:
             st.error(f"Error deleting sale: {str(e)}")
             return False
     return False
 
-def add_customer(spreadsheet, village, customer_name):
-    """Add a new customer to Google Sheets"""
-    if spreadsheet:
+def add_customer(db_manager, village, customer_name):
+    """Add a new customer to MongoDB"""
+    if db_manager:
         try:
-            worksheet = spreadsheet.worksheet(CUSTOMERS_SHEET)
-            worksheet.append_row([
-                village,
-                customer_name.strip(),
-                datetime.now().strftime("%Y-%m-%d %H:%M")
-            ])
-            load_customers_data.clear()
-            return True
+            success = db_manager.add_customer(village, customer_name)
+            if success:
+                load_customers_data.clear()
+            return success
         except Exception as e:
             st.error(f"Error adding customer: {str(e)}")
             return False
     return False
 
-def delete_customer(spreadsheet, village, customer_name):
-    """Delete a customer from Google Sheets and local JSON"""
+def delete_customer(db_manager, village, customer_name):
+    """Delete a customer from MongoDB and local JSON"""
     deleted = False
     
-    # Delete from Google Sheets
-    if spreadsheet:
+    # Delete from MongoDB
+    if db_manager:
         try:
-            worksheet = spreadsheet.worksheet(CUSTOMERS_SHEET)
-            data = worksheet.get_all_values()
-            # Strip whitespace for comparison
-            customer_name_clean = customer_name.strip()
-            
-            for i, row in enumerate(data):
-                if len(row) >= 2 and row[0].strip() == village and row[1].strip() == customer_name_clean:
-                    worksheet.delete_rows(i + 1)
-                    deleted = True
-                    break
-            
+            deleted = db_manager.delete_customer(village, customer_name)
             if deleted:
                 load_customers_data.clear()
         except Exception as e:
-            error_msg = str(e)
-            if "429" in error_msg or "Quota exceeded" in error_msg:
-                st.error("⚠️ Google Sheets API quota exceeded. Please wait a minute and try again.")
-            else:
-                st.error(f"Error deleting customer from Google Sheets: {error_msg}")
+            st.error(f"Error deleting customer from MongoDB: {str(e)}")
             return False
     
     # Also delete from local JSON file
@@ -606,41 +494,28 @@ def delete_customer(spreadsheet, village, customer_name):
     
     return deleted
 
-def edit_customer(spreadsheet, village, old_name, new_name):
-    """Edit a customer name in Google Sheets"""
-    if spreadsheet:
+def edit_customer(db_manager, village, old_name, new_name):
+    """Edit a customer name in MongoDB"""
+    if db_manager:
         try:
-            worksheet = spreadsheet.worksheet(CUSTOMERS_SHEET)
-            data = worksheet.get_all_values()
-            for i, row in enumerate(data):
-                if len(row) >= 2 and row[0] == village and row[1] == old_name:
-                    worksheet.update_cell(i + 1, 2, new_name.strip())
-                    worksheet.update_cell(i + 1, 3, datetime.now().strftime("%Y-%m-%d %H:%M"))
-                    load_customers_data.clear()
-                    
-                    # Also update in local JSON file
-                    save_customer_to_json(village, new_name.strip())
-                    return True
+            success = db_manager.update_customer(village, old_name, new_name)
+            if success:
+                load_customers_data.clear()
+                # Also update in local JSON file
+                save_customer_to_json(village, new_name.strip())
+            return success
         except Exception as e:
-            error_msg = str(e)
-            if "429" in error_msg or "Quota exceeded" in error_msg:
-                st.error("⚠️ Google Sheets API quota exceeded. Please wait a minute and try again.")
-            else:
-                st.error(f"Error editing customer: {error_msg}")
+            st.error(f"Error editing customer: {str(e)}")
     return False
 
-def update_pricing(spreadsheet, package, new_rate):
-    """Update pricing in Google Sheets"""
-    if spreadsheet:
+def update_pricing(db_manager, package, new_rate):
+    """Update pricing in MongoDB"""
+    if db_manager:
         try:
-            worksheet = spreadsheet.worksheet(PRICING_SHEET)
-            data = worksheet.get_all_values()
-            for i, row in enumerate(data):
-                if len(row) >= 1 and row[0] == package:
-                    worksheet.update_cell(i + 1, 2, new_rate)
-                    worksheet.update_cell(i + 1, 3, datetime.now().strftime("%Y-%m-%d %H:%M"))
-                    load_pricing_data.clear()
-                    return True
+            success = db_manager.update_pricing(package, new_rate)
+            if success:
+                load_pricing_data.clear()
+            return success
         except Exception as e:
             st.error(f"Error updating pricing: {str(e)}")
     return False
@@ -683,8 +558,8 @@ def render_sidebar():
         st.markdown("---")
         
         # Quick stats
-        if 'spreadsheet' in st.session_state and st.session_state.spreadsheet:
-            df = load_sales_data(st.session_state.spreadsheet)
+        if 'db_manager' in st.session_state and st.session_state.db_manager:
+            df = load_sales_data(st.session_state.db_manager)
             if not df.empty:
                 today = datetime.now().date()
                 today_sales = df[pd.to_datetime(df['Date']).dt.date == today] if 'Date' in df.columns else pd.DataFrame()
@@ -709,11 +584,11 @@ def render_sidebar():
         
         return page
 
-def render_dashboard(spreadsheet):
+def render_dashboard(db_manager):
     """Render the dashboard page"""
     st.markdown("<div class='page-title'><h2>🏠 Dashboard</h2></div>", unsafe_allow_html=True)
     
-    df = load_sales_data(spreadsheet)
+    df = load_sales_data(db_manager)
     
     if df.empty:
         st.info("No sales data yet. Start by adding your first sale!")
@@ -808,13 +683,13 @@ def render_dashboard(spreadsheet):
         available_cols = [col for col in display_cols if col in display_df.columns]
         st.dataframe(display_df[available_cols], use_container_width=True, hide_index=True)
 
-def render_new_sale(spreadsheet):
+def render_new_sale(db_manager):
     """Render the new sale entry page"""
     st.markdown("<div class='page-title'><h2>➕ New Sale Entry</h2></div>", unsafe_allow_html=True)
     
     # Load data
-    customers = load_customers_data(spreadsheet)
-    pricing = load_pricing_data(spreadsheet)
+    customers = load_customers_data(db_manager)
+    pricing = load_pricing_data(db_manager)
     
     # Initialize session state for village
     if 'selected_village' not in st.session_state:
@@ -891,14 +766,15 @@ def render_new_sale(spreadsheet):
     rate = pricing.get(packaging, 0)
     st.info(f"💵 Rate: ₹{rate} per {packaging}")
     
+    # Quantity - OUTSIDE form so total updates immediately
+    st.markdown("---")
+    quantity = st.number_input("🔢 Quantity", min_value=1, value=1, step=1, key="quantity_input")
+    
+    # Calculate total dynamically
+    total_amount = rate * quantity
+    st.markdown(f"### 💰 Total Amount: ₹{total_amount:,.0f}")
+    
     with st.form("sale_form", clear_on_submit=True):
-        # Quantity
-        quantity = st.number_input("🔢 Quantity", min_value=1, value=1, step=1)
-        
-        # Total
-        total_amount = rate * quantity
-        st.markdown(f"### 💰 Total Amount: ₹{total_amount:,.0f}")
-        
         # Submit
         submitted = st.form_submit_button("💾 Save Sale", use_container_width=True, type="primary")
         
@@ -919,8 +795,8 @@ def render_new_sale(spreadsheet):
                 # Check if this is a new customer and save automatically
                 customer_list = customers.get(village, [])
                 if final_customer not in [c.strip() for c in customer_list]:
-                    # Save to Google Sheets
-                    add_customer(spreadsheet, village, final_customer)
+                    # Save to MongoDB
+                    add_customer(db_manager, village, final_customer)
                     # Also save to local JSON file
                     save_customer_to_json(village, final_customer)
                     load_customers_data.clear()  # Clear cache to reload customers
@@ -941,17 +817,17 @@ def render_new_sale(spreadsheet):
                     "Amount Paid": amount_paid
                 }
                 
-                if save_sale(spreadsheet, sale_data):
+                if save_sale(db_manager, sale_data):
                     st.success(f"✅ Sale saved successfully for {final_customer}!")
                     st.balloons()
                 else:
                     st.error("❌ Failed to save sale. Please try again.")
 
-def render_view_sales(spreadsheet):
+def render_view_sales(db_manager):
     """Render the view/edit/delete sales page"""
     st.markdown("<div class='page-title'><h2>📋 View & Manage Sales</h2></div>", unsafe_allow_html=True)
     
-    df = load_sales_data(spreadsheet)
+    df = load_sales_data(db_manager)
     
     if df.empty:
         st.info("No sales data available.")
@@ -1036,7 +912,7 @@ def render_view_sales(spreadsheet):
             
             if selected_id:
                 selected_row = filtered_df[filtered_df['ID'] == selected_id].iloc[0]
-                row_index = df[df['ID'] == selected_id].index[0]
+                # row_index is no longer needed with MongoDB migration as we use sale_id (ID)
                 
                 col1, col2 = st.columns(2)
                 
@@ -1047,34 +923,52 @@ def render_view_sales(spreadsheet):
                 
                 with col2:
                     if st.button("🗑️ Delete Entry", use_container_width=True, type="secondary"):
-                        if delete_sale(spreadsheet, row_index):
+                        if delete_sale(db_manager, selected_id):
                             st.success("✅ Entry deleted successfully!")
                             st.rerun()
                 
                 # Edit form
                 if st.session_state.get('editing_id') == selected_id:
                     st.markdown("#### Edit Entry")
-                    with st.form("edit_form"):
-                        pricing = load_pricing_data(spreadsheet)
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            edit_date = st.date_input("Date", value=pd.to_datetime(selected_row['Date']).date() if pd.notna(selected_row.get('Date')) else datetime.now().date())
-                            edit_village = st.selectbox("Village", VILLAGES, index=VILLAGES.index(selected_row['Village']) if selected_row.get('Village') in VILLAGES else 0)
-                            edit_tea = st.selectbox("Tea Type", TEA_TYPES, index=TEA_TYPES.index(selected_row['Tea Type']) if selected_row.get('Tea Type') in TEA_TYPES else 0)
-                            edit_quantity = st.number_input("Quantity", min_value=1, value=int(selected_row.get('Quantity', 1)))
-                        
-                        with col2:
-                            edit_customer = st.text_input("Customer Name", value=selected_row.get('Customer Name', ''))
-                            edit_packaging = st.selectbox("Packaging", list(pricing.keys()), index=list(pricing.keys()).index(selected_row['Packaging']) if selected_row.get('Packaging') in pricing else 0)
-                            edit_payment = st.selectbox("Payment Status", PAYMENT_OPTIONS, index=PAYMENT_OPTIONS.index(selected_row['Payment Status']) if selected_row.get('Payment Status') in PAYMENT_OPTIONS else 0)
-                            edit_paid = st.number_input("Amount Paid", min_value=0.0, value=float(selected_row.get('Amount Paid', 0)))
-                        
-                        edit_rate = pricing.get(edit_packaging, 0)
-                        edit_total = edit_rate * edit_quantity
-                        st.markdown(f"**Total Amount: ₹{edit_total:,.0f}**")
-                        
+                    
+                    pricing = load_pricing_data(db_manager)
+                    
+                    # Initialize session state for edit values if not exists
+                    if f'edit_packaging_{selected_id}' not in st.session_state:
+                        st.session_state[f'edit_packaging_{selected_id}'] = selected_row.get('Packaging', list(pricing.keys())[0])
+                    if f'edit_quantity_{selected_id}' not in st.session_state:
+                        st.session_state[f'edit_quantity_{selected_id}'] = int(selected_row.get('Quantity', 1))
+                    
+                    # Inputs outside form for dynamic calculation
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        edit_date = st.date_input("Date", value=pd.to_datetime(selected_row['Date']).date() if pd.notna(selected_row.get('Date')) else datetime.now().date(), key=f"edit_date_{selected_id}")
+                        edit_village = st.selectbox("Village", VILLAGES, index=VILLAGES.index(selected_row['Village']) if selected_row.get('Village') in VILLAGES else 0, key=f"edit_village_{selected_id}")
+                        edit_tea = st.selectbox("Tea Type", TEA_TYPES, index=TEA_TYPES.index(selected_row['Tea Type']) if selected_row.get('Tea Type') in TEA_TYPES else 0, key=f"edit_tea_{selected_id}")
+                        edit_packaging = st.selectbox("Packaging", list(pricing.keys()), index=list(pricing.keys()).index(st.session_state[f'edit_packaging_{selected_id}']) if st.session_state[f'edit_packaging_{selected_id}'] in pricing else 0, key=f"edit_packaging_{selected_id}")
+                    
+                    with col2:
+                        edit_customer = st.text_input("Customer Name", value=selected_row.get('Customer Name', ''), key=f"edit_customer_{selected_id}")
+                        edit_quantity = st.number_input("Quantity", min_value=1, value=st.session_state[f'edit_quantity_{selected_id}'], key=f"edit_quantity_{selected_id}")
+                        edit_payment = st.selectbox("Payment Status", PAYMENT_OPTIONS, index=PAYMENT_OPTIONS.index(selected_row['Payment Status']) if selected_row.get('Payment Status') in PAYMENT_OPTIONS else 0, key=f"edit_payment_{selected_id}")
+                        edit_paid = st.number_input("Amount Paid", min_value=0.0, value=float(selected_row.get('Amount Paid', 0)), key=f"edit_paid_{selected_id}")
+                    
+                    # Calculate total dynamically
+                    edit_rate = pricing.get(edit_packaging, 0)
+                    edit_total = edit_rate * edit_quantity
+                    st.markdown(f"### 💰 Total Amount: ₹{edit_total:,.0f}")
+                    
+                    # Form with just the submit button
+                    with st.form(f"edit_form_{selected_id}"):
                         if st.form_submit_button("💾 Save Changes", use_container_width=True, type="primary"):
+                            # Calculate amount paid based on payment status
+                            if edit_payment == "Paid":
+                                final_edit_paid = float(edit_total)
+                            elif edit_payment == "Not paid":
+                                final_edit_paid = 0.0
+                            else:
+                                final_edit_paid = float(edit_paid)
+
                             updated_data = {
                                 "Date": edit_date.strftime("%Y-%m-%d"),
                                 "Day": get_day_from_date(edit_date),
@@ -1087,20 +981,25 @@ def render_view_sales(spreadsheet):
                                 "Quantity": edit_quantity,
                                 "Total Amount": edit_total,
                                 "Payment Status": edit_payment,
-                                "Amount Paid": edit_paid
+                                "Amount Paid": final_edit_paid
                             }
                             
-                            if update_sale(spreadsheet, row_index, updated_data):
+                            if update_sale(db_manager, selected_id, updated_data):
                                 st.success("✅ Entry updated successfully!")
+                                # Clean up session state
                                 del st.session_state['editing_id']
                                 del st.session_state['editing_row']
+                                if f'edit_packaging_{selected_id}' in st.session_state:
+                                    del st.session_state[f'edit_packaging_{selected_id}']
+                                if f'edit_quantity_{selected_id}' in st.session_state:
+                                    del st.session_state[f'edit_quantity_{selected_id}']
                                 st.rerun()
 
-def render_reports(spreadsheet):
+def render_reports(db_manager):
     """Render the reports page"""
     st.markdown("<div class='page-title'><h2>📊 Reports & Analytics</h2></div>", unsafe_allow_html=True)
     
-    df = load_sales_data(spreadsheet)
+    df = load_sales_data(db_manager)
     
     if df.empty:
         st.info("No data available for reports.")
@@ -1209,11 +1108,11 @@ def render_reports(spreadsheet):
                 }).reset_index()
                 st.dataframe(pack_report, use_container_width=True, hide_index=True)
 
-def render_pending_payments(spreadsheet):
+def render_pending_payments(db_manager):
     """Render the pending payments page"""
     st.markdown("<div class='page-title'><h2>💰 Pending Payments</h2></div>", unsafe_allow_html=True)
     
-    df = load_sales_data(spreadsheet)
+    df = load_sales_data(db_manager)
     
     if df.empty:
         st.info("No sales data available.")
@@ -1294,7 +1193,7 @@ def render_pending_payments(spreadsheet):
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-def render_settings(spreadsheet):
+def render_settings(db_manager):
     """Render the settings page"""
     st.markdown("<div class='page-title'><h2>⚙️ Settings</h2></div>", unsafe_allow_html=True)
     
@@ -1302,7 +1201,7 @@ def render_settings(spreadsheet):
     
     with tab1:
         st.markdown("### Update Package Prices")
-        pricing = load_pricing_data(spreadsheet)
+        pricing = load_pricing_data(db_manager)
         
         for package, rate in pricing.items():
             col1, col2, col3 = st.columns([2, 2, 1])
@@ -1313,13 +1212,13 @@ def render_settings(spreadsheet):
             with col3:
                 if new_rate != rate:
                     if st.button("💾", key=f"save_{package}"):
-                        if update_pricing(spreadsheet, package, new_rate):
+                        if update_pricing(db_manager, package, new_rate):
                             st.success(f"✅ {package} price updated!")
                             st.rerun()
     
     with tab2:
         st.markdown("### Manage Customers")
-        customers = load_customers_data(spreadsheet)
+        customers = load_customers_data(db_manager)
         
         # Add customer
         st.markdown("#### ➕ Add New Customer")
@@ -1332,7 +1231,7 @@ def render_settings(spreadsheet):
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("➕ Add", key="add_cust_btn"):
                 if add_name.strip():
-                    if add_customer(spreadsheet, add_village, add_name.strip()):
+                    if add_customer(db_manager, add_village, add_name.strip()):
                         st.success(f"✅ Customer added!")
                         st.rerun()
         
@@ -1353,7 +1252,7 @@ def render_settings(spreadsheet):
                         st.session_state[f'editing_{view_village}_{customer}'] = True
                 with col3:
                     if st.button("🗑️", key=f"del_{view_village}_{customer}", help="Delete customer"):
-                        if delete_customer(spreadsheet, view_village, customer):
+                        if delete_customer(db_manager, view_village, customer):
                             st.success(f"✅ Deleted {customer}")
                             st.rerun()
                 
@@ -1365,7 +1264,7 @@ def render_settings(spreadsheet):
                         with col_a:
                             if st.form_submit_button("💾 Save"):
                                 if new_name.strip() and new_name.strip() != customer:
-                                    if edit_customer(spreadsheet, view_village, customer, new_name.strip()):
+                                    if edit_customer(db_manager, view_village, customer, new_name.strip()):
                                         st.success(f"✅ Updated to {new_name.strip()}")
                                         st.session_state[f'editing_{view_village}_{customer}'] = False
                                         st.rerun()
@@ -1387,17 +1286,16 @@ def render_settings(spreadsheet):
             day_str = day[0] if day else "Not assigned"
             st.markdown(f"**🏘️ {village}** - Assigned Day: {day_str}")
         
-        # Google Sheet Link
+        # MongoDB Connection Info
         st.markdown("---")
-        st.markdown("### 📊 Google Sheet Access")
-        if spreadsheet:
-            sheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
-            st.success("✅ Connected to Google Sheets")
-            st.markdown(f"**📎 Sheet Link:** [Open Google Sheet]({sheet_url})")
-            st.code(sheet_url, language=None)
-            st.caption("Click the link above to view/edit your data directly in Google Sheets")
+        st.markdown("### 📡 Database Connection")
+        if db_manager:
+            db_name = os.getenv("DB_NAME", "teasale")
+            st.success("✅ Connected to MongoDB")
+            st.markdown(f"**Database:** {db_name}")
+            st.caption("Your data is securely stored in MongoDB Atlas")
         else:
-            st.warning("⚠️ Not connected to Google Sheets")
+            st.warning("⚠️ Not connected to MongoDB")
 
 # ============================================
 # MAIN APP
@@ -1409,32 +1307,33 @@ def main():
     if not check_password():
         return
     
-    # Initialize Google Sheets
-    if 'spreadsheet' not in st.session_state:
-        st.session_state.spreadsheet = init_google_sheets()
+    # Initialize MongoDB
+    if 'db_manager' not in st.session_state:
+        st.session_state.db_manager = init_mongodb()
     
-    spreadsheet = st.session_state.spreadsheet
+    db_manager = st.session_state.db_manager
     
-    # Show warning if not connected to Google Sheets
-    if spreadsheet is None:
-        st.warning("⚠️ Not connected to Google Sheets. Data will not be saved permanently.")
+    # Show warning if not connected to MongoDB
+    if db_manager is None:
+        st.error("❌ Not connected to MongoDB. Please check your connection settings.")
+        st.stop()
     
     # Render sidebar and get selected page
     page = render_sidebar()
     
     # Render selected page
     if page == "🏠 Dashboard":
-        render_dashboard(spreadsheet)
+        render_dashboard(db_manager)
     elif page == "➕ New Sale":
-        render_new_sale(spreadsheet)
+        render_new_sale(db_manager)
     elif page == "📋 View Sales":
-        render_view_sales(spreadsheet)
+        render_view_sales(db_manager)
     elif page == "📊 Reports":
-        render_reports(spreadsheet)
+        render_reports(db_manager)
     elif page == "💰 Pending Payments":
-        render_pending_payments(spreadsheet)
+        render_pending_payments(db_manager)
     elif page == "⚙️ Settings":
-        render_settings(spreadsheet)
+        render_settings(db_manager)
 
 if __name__ == "__main__":
     main()
